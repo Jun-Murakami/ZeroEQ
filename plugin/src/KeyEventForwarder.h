@@ -24,7 +24,7 @@
     typedef struct HWND__* HWND;
 #endif
 
-namespace zc
+namespace ze
 {
     /**
      * キーイベントをDAWホストへ転送するためのユーティリティクラス

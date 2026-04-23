@@ -12,7 +12,7 @@
  #include <unistd.h> // getpid
 #endif
 
-namespace zc
+namespace ze
 {
 
 bool KeyEventForwarder::forwardKeyEventToHost(const juce::var& eventData, juce::Component* editorComponent)
@@ -554,4 +554,4 @@ std::optional<unsigned short> KeyEventForwarder::lookupMacKeyCodeFromUnicodeChar
 
 #endif // JUCE_MAC
 
-} // namespace zc
+} // namespace ze

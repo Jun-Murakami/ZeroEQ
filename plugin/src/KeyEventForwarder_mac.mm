@@ -7,7 +7,7 @@
  #include <objc/message.h>
  #include <juce_core/native/juce_ObjCHelpers_mac.h>
 
-namespace zc
+namespace ze
 {
 namespace
 {
@@ -250,6 +250,6 @@ bool KeyEventForwarder::dispatchKeyEventUsingCocoa(const juce::var& eventData, j
     return false;
 }
 
-} // namespace zc
+} // namespace ze
 
 #endif // JUCE_MAC

@@ -190,9 +190,9 @@ void ZeroEQAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     sanitizeBufferFinite(buffer, numChannels, numSamples);
 
     // --- パラメータ ---
-    const bool  bypass    = parameters.getRawParameterValue(ze::id::BYPASS)->load() > 0.5f;
-    const float outGainDb = clampFinite(parameters.getRawParameterValue(ze::id::OUTPUT_GAIN)->load(), -24.0f, 24.0f, 0.0f);
-    const int   anaMode   = juce::jlimit(0, 3, static_cast<int>(parameters.getRawParameterValue(ze::id::ANALYZER_MODE)->load() + 0.5f));
+    const bool  bypass    = parameters.getRawParameterValue(ze::id::BYPASS.getParamID())->load() > 0.5f;
+    const float outGainDb = clampFinite(parameters.getRawParameterValue(ze::id::OUTPUT_GAIN.getParamID())->load(), -24.0f, 24.0f, 0.0f);
+    const int   anaMode   = juce::jlimit(0, 3, static_cast<int>(parameters.getRawParameterValue(ze::id::ANALYZER_MODE.getParamID())->load() + 0.5f));
 
     pullBandParamsIntoDSP();
 
