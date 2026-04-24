@@ -27,6 +27,14 @@ interface MenuSection { readonly title: string; readonly links: ReadonlyArray<Me
 
 const MENU_SECTIONS: ReadonlyArray<MenuSection> = [
   {
+    title: 'Demo Site',
+    links: [
+      { label: 'ZeroEQ',    href: 'https://zeroeq-demo.web.app/' },
+      { label: 'ZeroComp',  href: 'https://zerocomp-demo.web.app/' },
+      { label: 'ZeroLimit', href: 'https://zerolimit-demo.web.app/' },
+    ],
+  },
+  {
     title: 'Download Plugin',
     links: [
       { label: 'ZeroEQ',    href: 'https://jun-murakami.web.app/#zeroEQ' },
