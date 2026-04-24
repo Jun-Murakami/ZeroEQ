@@ -24,10 +24,11 @@ namespace ze::dsp {
 class Analyzer
 {
 public:
-    static constexpr int kFftOrder = 11;           // 2048 point
+    static constexpr int kFftOrder = 12;           // 4096 point — 低域分解能を上げるため 2048 から増量
     static constexpr int kFftSize  = 1 << kFftOrder;
     static constexpr int kNumBins  = kFftSize / 2;
     static constexpr int kNumDisplayBins = 256;    // UI 送信用（log-freq リサンプル済み）
+    static constexpr float kMaxDisplayHz = 22000.0f; // 22kHz 超はカット（可聴域外）
 
     Analyzer();
     ~Analyzer() = default;

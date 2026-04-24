@@ -53,15 +53,7 @@ namespace {
             });
     }
 
-    // バンド既定周波数を対数で分散配置（100 / 180 / 320 / 580 / 1.1k / 2k / 3.6k / 6.5k Hz 相当）
-    float defaultBandFreq(int index)
-    {
-        constexpr float fLow  = 100.0f;
-        constexpr float fHigh = 6500.0f;
-        const float t = static_cast<float>(index) / static_cast<float>(ze::id::kNumBands - 1);
-        return fLow * std::pow(fHigh / fLow, t);
-    }
-}
+} // anonymous namespace
 
 ZeroEQAudioProcessor::ZeroEQAudioProcessor()
     : AudioProcessor(BusesProperties()
@@ -88,34 +80,41 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZeroEQAudioProcessor::create
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         ze::id::ANALYZER_MODE, "Analyzer",
-        juce::StringArray{ "Off", "Pre", "Post", "Pre+Post" }, 2));
+        juce::StringArray{ "Off", "Pre", "Post", "Pre+Post" }, 3)); // Pre+Post: EQ 前後のゴースト比較表示
 
-    // バンド
+    // バンド（11 本固定配置。デフォルト type / freq / Q は ze::id::defaultFor(i) に集約）
     const juce::StringArray bandTypeNames{ "Bell", "LowShelf", "HighShelf", "HighPass", "LowPass", "Notch" };
 
     for (int i = 0; i < ze::id::kNumBands; ++i)
     {
+        const auto def = ze::id::defaultFor(i);
         const juce::String label = "Band " + juce::String(i + 1);
 
         params.push_back(std::make_unique<juce::AudioParameterBool>(
-            ze::id::bandOnID(i),   label + " On",   false));
+            ze::id::bandOnID(i),   label + " On",   def.on));
 
         params.push_back(std::make_unique<juce::AudioParameterChoice>(
-            ze::id::bandTypeID(i), label + " Type", bandTypeNames, 0));
+            ze::id::bandTypeID(i), label + " Type", bandTypeNames, def.typeIdx));
 
         params.push_back(std::make_unique<juce::AudioParameterFloat>(
             ze::id::bandFreqID(i), label + " Freq",
-            makeLogRange(20.0f, 20000.0f), defaultBandFreq(i),
+            makeLogRange(20.0f, 20000.0f), def.freqHz,
             juce::AudioParameterFloatAttributes().withLabel("Hz")));
 
         params.push_back(std::make_unique<juce::AudioParameterFloat>(
             ze::id::bandGainID(i), label + " Gain",
-            juce::NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f,
+            juce::NormalisableRange<float>(-32.0f, 32.0f, 0.1f), 0.0f,
             juce::AudioParameterFloatAttributes().withLabel("dB")));
 
         params.push_back(std::make_unique<juce::AudioParameterFloat>(
             ze::id::bandQID(i),    label + " Q",
-            makeLogRange(0.1f, 18.0f), 1.0f));
+            makeLogRange(0.1f, 18.0f), def.q));
+
+        // HP/LP 用スロープ (choice 0..5 = 6/12/18/24/36/48 dB/oct)。他タイプでは未使用だが保存用に全バンド作成。
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            ze::id::bandSlopeID(i), label + " Slope",
+            juce::StringArray{ "6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct", "36 dB/oct", "48 dB/oct" },
+            def.slopeIdx));
     }
 
     return { params.begin(), params.end() };
@@ -173,8 +172,10 @@ void ZeroEQAudioProcessor::pullBandParamsIntoDSP() noexcept
         if (auto* p = parameters.getRawParameterValue(ze::id::bandOnID(i)))    spec.on     = p->load() > 0.5f;
         if (auto* p = parameters.getRawParameterValue(ze::id::bandTypeID(i)))  spec.type   = static_cast<ze::dsp::Equalizer::Type>(juce::jlimit(0, 5, static_cast<int>(p->load() + 0.5f)));
         if (auto* p = parameters.getRawParameterValue(ze::id::bandFreqID(i)))  spec.freqHz = clampFinite(p->load(), 20.0f, 20000.0f, 1000.0f);
-        if (auto* p = parameters.getRawParameterValue(ze::id::bandGainID(i)))  spec.gainDb = clampFinite(p->load(), -24.0f, 24.0f,     0.0f);
+        if (auto* p = parameters.getRawParameterValue(ze::id::bandGainID(i)))  spec.gainDb = clampFinite(p->load(), -32.0f, 32.0f,     0.0f);
         if (auto* p = parameters.getRawParameterValue(ze::id::bandQID(i)))     spec.q      = clampFinite(p->load(), 0.1f, 18.0f,       1.0f);
+        if (auto* p = parameters.getRawParameterValue(ze::id::bandSlopeID(i)))
+            spec.slopeDbPerOct = ze::id::slopeIdxToDbPerOct(juce::jlimit(0, 5, static_cast<int>(p->load() + 0.5f)));
         equalizer.setBand(i, spec);
     }
 }

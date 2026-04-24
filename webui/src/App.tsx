@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import { useEffect, useRef, useState, type PointerEventHandler } from 'react';
+import { Fragment } from 'react';
+import { Box, Button, Divider, Paper, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { juceBridge } from './bridge/juce';
 import { darkTheme } from './theme';
@@ -9,88 +10,59 @@ import { GlobalDialog } from './components/GlobalDialog';
 import LicenseDialog from './components/LicenseDialog';
 import { WebTransportBar } from './components/WebTransportBar';
 import { WebDemoMenu } from './components/WebDemoMenu';
+import { ParameterFader } from './components/ParameterFader';
+import { LevelMeterBar } from './components/VUMeter';
+import { SpectrumEditor } from './components/eq/SpectrumEditor';
+import { BandControlColumn } from './components/eq/BandControlColumn';
+import { BANDS } from './components/eq/BandDefs';
+import { useAllBandStates } from './hooks/useBandParam';
 import type { MeterUpdateData, SpectrumUpdateData } from './types';
 import './App.css';
 
 const IS_WEB_MODE = import.meta.env.VITE_RUNTIME === 'web';
 
-// ===========================================================================
-// ZeroEQ WebUI — プレースホルダ実装。
-// 仮の中央スペクトラムキャンバスと I/O ピークメーターのみを表示する。
-// 本番 UI（8 band の EQ カーブ + ノード drag、スペアナ統合）は別途実装。
-// ===========================================================================
-
-type SpectrumState = { pre?: number[]; post?: number[]; numBins: number };
-
-function SpectrumView({ data, width, height }: { data: SpectrumState; width: number; height: number }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    // 背景グリッド
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1;
-    for (let db = 0; db >= -60; db -= 12) {
-      const y = ((db + 12) / 72) * height;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-
-    const drawCurve = (bins: number[], color: string) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      for (let i = 0; i < bins.length; i++) {
-        const x = (i / (bins.length - 1)) * width;
-        const db = Math.max(-60, Math.min(12, bins[i] ?? -60));
-        const y = ((12 - db) / 72) * height;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    };
-
-    if (data.pre)  drawCurve(data.pre,  'rgba(110,165,255,0.45)');
-    if (data.post) drawCurve(data.post, 'rgba(255,210,110,0.85)');
-  }, [data, width, height]);
-
-  return <canvas ref={canvasRef} style={{ display: 'block' }} />;
-}
+// 下部のバンドコントロール行の固定高（スイッチ + 3 段ノブ + 余白）。
+//  バンド列の実コンテンツ: switch(24) + gap(8) + 3×(knob 34 + input - mt8) + 2×gap(8) ≈ 190
+//  はみ出しを避けつつ余白を抑える目安。
+const BAND_GRID_HEIGHT = 200;
+// 右列（メーター / OUT フェーダー）の幅。
+const RIGHT_COL_WIDTH = 80;
 
 function App() {
   useHostShortcutForwarding();
   useGlobalZoomGuard();
 
-  const [inPeakL, setInPeakL] = useState(-60);
-  const [inPeakR, setInPeakR] = useState(-60);
+  // 入力メーターはスペアナで可視化されるので削除、OUT のみ表示
   const [outPeakL, setOutPeakL] = useState(-60);
   const [outPeakR, setOutPeakR] = useState(-60);
-  const [spectrum, setSpectrum] = useState<SpectrumState>({ numBins: 256 });
+  const [preBins, setPreBins] = useState<number[] | undefined>(undefined);
+  const [postBins, setPostBins] = useState<number[] | undefined>(undefined);
+
+  // 全 11 バンドの APVTS 状態（SpectrumEditor で合成カーブ + ノード drag / ホイール操作）
+  const allBandStates = useAllBandStates();
+  const bandsForSpectrum = allBandStates.map((s) => ({
+    on: s.on,
+    freqHz: s.freqHz,
+    gainDb: s.gainDb,
+    q: s.q,
+    slopeDb: s.slopeDb,
+    setOn: s.setOn,
+    setFreqHz: s.setFreqHz,
+    setGainDb: s.setGainDb,
+    setQ: s.setQ,
+    setSlopeDb: s.setSlopeDb,
+  }));
 
   useEffect(() => {
     const meterId = juceBridge.addEventListener('meterUpdate', (d: unknown) => {
       const m = d as MeterUpdateData;
-      setInPeakL(m.input?.peakLeft ?? -60);
-      setInPeakR(m.input?.peakRight ?? -60);
       setOutPeakL(m.output?.peakLeft ?? -60);
       setOutPeakR(m.output?.peakRight ?? -60);
     });
     const specId = juceBridge.addEventListener('spectrumUpdate', (d: unknown) => {
       const s = d as SpectrumUpdateData;
-      setSpectrum({ numBins: s.numBins ?? 256, pre: s.pre, post: s.post });
+      setPreBins(s.pre);
+      setPostBins(s.post);
     });
     return () => {
       juceBridge.removeEventListener(meterId);
@@ -106,17 +78,144 @@ function App() {
 
   const [licenseOpen, setLicenseOpen] = useState(false);
 
+  // スペクトラム描画サイズの測定（Grid セルのサイズに追従）
+  const spectrumWrapRef = useRef<HTMLDivElement | null>(null);
+  const [spectrumSize, setSpectrumSize] = useState({ width: 900, height: 260 });
+  useEffect(() => {
+    const el = spectrumWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = Math.floor(entry.contentRect.width);
+        const h = Math.floor(entry.contentRect.height);
+        setSpectrumSize((prev) => (prev.width !== w || prev.height !== h ? { width: w, height: h } : prev));
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // レベルメーターの高さはスペアナ高さに追従（spectrumSize.height をそのまま使う）
+  // dB スケールの描画: 左側列に canvas で目盛りを描く
+  const meterScaleRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = meterScaleRef.current;
+    if (!canvas) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const w = 22;
+    const h = spectrumSize.height;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    // 目盛り値（ZeroComp LevelMeterBar と同じ -30..0 線形マップ）
+    const MIN_DB = -30;
+    const dbToY = (db: number) => h - ((Math.max(MIN_DB, Math.min(0, db)) - MIN_DB) / (0 - MIN_DB)) * h;
+    ctx.font = '10px "Red Hat Mono", monospace';
+    ctx.fillStyle = '#e0e0e0'; // primary text color
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    [0, -3, -6, -9, -12, -18, -24].forEach((db) => {
+      const y = dbToY(db);
+      // 上/下端に張り付くラベルはキャンバス内へ押し込む
+      const yClamped = db === 0 ? 6 : Math.min(h - 6, y);
+      ctx.fillText(db === 0 ? '0' : `${db}`, 2, yClamped);
+    });
+  }, [spectrumSize.height]);
+
+  // OUTPUT フェーダーの高さ = バンド列の底と揃える。
+  //  ParameterFader 内訳: label(20) + slider + mb(4) + mt(2) + input area(~20) ≈ slider + 46
+  //  スライダーを気持ち長めに。
+  const faderHeight = BAND_GRID_HEIGHT - 50;
+
+  // EQ 縦軸の dB レンジ切替。スペアナ内左上にコンパクトなトグル。
+  const [eqDbMax, setEqDbMax] = useState<number>(12);
+
+  // オールリセット: 全 11 バンドを BANDS 定義のデフォルトに戻す（on/off も含む）。
+  const resetAllBands = () => {
+    allBandStates.forEach((s, i) => {
+      const def = BANDS[i];
+      s.setOn(def.defaultOn);
+      s.setFreqHz(def.defaultHz);
+      s.setGainDb(def.defaultGainDb);
+      s.setQ(def.defaultQ);
+      s.setSlopeDb(def.defaultSlopeDb);
+    });
+  };
+
+  // リサイズハンドル用 drag 状態。
+  //  onDragStart で現在サイズを記録 → onDrag で差分算出 → juceBridge 経由で
+  //  window_action('resizeTo', w, h) を発行。requestAnimationFrame で間引きして
+  //  連続イベントで resize を乱発しないようにする（ZeroComp 参考）。
+  const dragState = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
+  const onDragStart: PointerEventHandler<HTMLDivElement> = (e) => {
+    dragState.current = { startX: e.clientX, startY: e.clientY, startW: window.innerWidth, startH: window.innerHeight };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onDrag: PointerEventHandler<HTMLDivElement> = (e) => {
+    if (!dragState.current) return;
+    const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
+    const w = Math.max(875, dragState.current.startW + dx);
+    const h = Math.max(450, dragState.current.startH + dy);
+    if (!window.__resizeRAF) {
+      window.__resizeRAF = requestAnimationFrame(() => {
+        window.__resizeRAF = 0;
+        juceBridge.callNative('window_action', 'resizeTo', w, h);
+      });
+    }
+  };
+  const onDragEnd: PointerEventHandler<HTMLDivElement> = () => {
+    dragState.current = null;
+  };
+
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', p: 1.5, gap: 1 }}>
+      <style>{`
+        #resizeHandle::after {
+          content: '';
+          position: absolute;
+          right: 4px;
+          top: 8px;
+          width: 2px;
+          height: 2px;
+          background: rgba(79, 195, 247, 1);
+          border-radius: 1px;
+          pointer-events: none;
+          box-shadow:
+            -4px 4px 0 0 rgba(79, 195, 247, 1),
+            -8px 8px 0 0 rgba(79, 195, 247, 1),
+            -1px 7px 0 0 rgba(79, 195, 247, 1);
+        }
+
+        html, body, #root {
+          -webkit-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
+        }
+        input, textarea, select, [contenteditable="true"], .allow-selection {
+          -webkit-user-select: text !important;
+          -ms-user-select: text !important;
+          user-select: text !important;
+          caret-color: auto;
+        }
+      `}</style>
+      {/* 外枠は ZeroComp と同じ. p:2 + pt:0 でヘッダ行と Paper の間に僅差を取る。
+          背景色は theme の background.default に委ねる（Paper との明暗差で段差が出る）。 */}
+      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', p: 2, pt: 0, overflow: 'hidden' }}>
         {IS_WEB_MODE && (
-          <Box sx={{ width: '100%', maxWidth: 900 }}>
+          <Box sx={{ width: '100%', maxWidth: 1200 }}>
             <WebTransportBar />
           </Box>
         )}
 
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, py: 0.5 }}>
           <Typography
             variant='body2'
             sx={{ color: 'primary.main', fontWeight: 600, cursor: 'pointer' }}
@@ -127,23 +226,248 @@ function App() {
           <Typography variant='caption' color='text.secondary'>by Jun Murakami</Typography>
         </Box>
 
-        <Paper elevation={2} sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 1.5, gap: 1 }}>
-          <Typography variant='caption' color='text.secondary'>
-            Placeholder EQ view — アナライザとメーターの配線確認用。バンド UI は未実装。
-          </Typography>
+        <Paper
+          elevation={2}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'grid',
+            gridTemplateColumns: `1fr ${RIGHT_COL_WIDTH}px`,
+            gridTemplateRows: `1fr ${BAND_GRID_HEIGHT}px`,
+            gap: 1,
+            // ZeroComp と揃えたパディング: pt:2 / px:2 / pb:1 / mb:1
+            pt: 2,
+            px: 2,
+            pb: 1,
+            mb: 1,
+          }}
+        >
+          {/* 上左: スペアナ + エディタ */}
+          <Box
+            ref={spectrumWrapRef}
+            sx={{
+              gridColumn: '1 / 2',
+              gridRow: '1 / 2',
+              display: 'flex',
+              alignItems: 'stretch',
+              justifyContent: 'stretch',
+              minHeight: 0,
+              minWidth: 0,
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            <SpectrumEditor
+              width={spectrumSize.width}
+              height={spectrumSize.height}
+              preBins={preBins}
+              postBins={postBins}
+              bands={bandsForSpectrum}
+              eqDbMax={eqDbMax}
+            />
+            {/* EQ 縦軸スケール切替（左上、最大値ラベルの右） */}
+            <Box
+              sx={{
+                position: 'absolute',
+                left: 27,
+                top: 1,
+                zIndex: 2,
+              }}
+            >
+              <ToggleButtonGroup
+                value={eqDbMax}
+                exclusive
+                size='small'
+                onChange={(_, v) => { if (v !== null) setEqDbMax(v); }}
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    padding: '1px 5px',
+                    fontSize: '10px',
+                    lineHeight: 1,
+                    minWidth: 0,
+                    color: 'rgba(255,255,255,0.4)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                  },
+                  '& .MuiToggleButton-root.Mui-selected': {
+                    color: '#fff',
+                    backgroundColor: 'rgba(79,195,247,0.22)',
+                    borderColor: 'rgba(79,195,247,0.55)',
+                  },
+                }}
+              >
+                {[3, 6, 12, 24, 32].map((v) => (
+                  <ToggleButton key={v} value={v}>±{v}</ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </Box>
 
-          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#15181b', borderRadius: 1, overflow: 'hidden' }}>
-            <SpectrumView data={spectrum} width={820} height={320} />
+            {/* オールリセット（右上） */}
+            <Box
+              sx={{
+                position: 'absolute',
+                right: 10,
+                top: 1,
+                zIndex: 2,
+              }}
+            >
+              <Button
+                onClick={resetAllBands}
+                size='small'
+                variant='outlined'
+                sx={{
+                  padding: '1px 6px',
+                  minWidth: 0,
+                  fontSize: '10px',
+                  lineHeight: 1,
+                  textTransform: 'none',
+                  color: 'rgba(255,255,255,0.4)',
+                  borderColor: 'rgba(255,255,255,0.12)',
+                  '&:hover': {
+                    color: 'rgba(255,255,255,0.85)',
+                    borderColor: 'rgba(255,255,255,0.35)',
+                    backgroundColor: 'rgba(255,255,255,0.04)',
+                  },
+                }}
+              >
+                Reset All
+              </Button>
+            </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', gap: 2, fontSize: 12, color: 'text.secondary' }}>
-            <span>IN L: {inPeakL.toFixed(1)} dB</span>
-            <span>IN R: {inPeakR.toFixed(1)} dB</span>
-            <span style={{ marginLeft: 'auto' }}>OUT L: {outPeakL.toFixed(1)} dB</span>
-            <span>OUT R: {outPeakR.toFixed(1)} dB</span>
+          {/* 上右: dB スケール + OUT L / R メーター（高さはスペアナに追従） */}
+          <Box
+            sx={{
+              gridColumn: '2 / 3',
+              gridRow: '1 / 2',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-start',
+              gap: 0.5,
+              minHeight: 0,
+            }}
+          >
+            <LevelMeterBar level={outPeakL} width={20} height={spectrumSize.height} showLabel={false} />
+            <LevelMeterBar level={outPeakR} width={20} height={spectrumSize.height} showLabel={false} />
+            <canvas ref={meterScaleRef} style={{ display: 'block' }} />
+          </Box>
+
+          {/* 下左: バンドコントロール群（space-between で可変ギャップ） */}
+          <Box
+            sx={{
+              gridColumn: '1 / 2',
+              gridRow: '2 / 3',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              pl: 5,
+            }}
+          >
+            {/* 左端の行ラベル。各ノブの縦中央に揃えるため、BandControlColumn と同じレイアウトを
+                ダミー Box で再現した列を絶対配置する。 */}
+            <Box sx={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 32,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 1, // BandControlColumn の gap:1 と一致
+              fontSize: 12,
+              color: 'text.secondary',
+              lineHeight: 1,
+              userSelect: 'none',
+              pointerEvents: 'none',
+              pr: 1, // ディバイダーとの隙間
+            }}>
+              {/* スイッチ行のプレースホルダー */}
+              <Box sx={{ height: 24 }} />
+              {/* Gain: knob + 数値入力のグループ。ラベルはノブと同じ高さ Box に中央揃え。 */}
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: '100%' }}>
+                <Box sx={{ height: 34, display: 'flex', alignItems: 'center' }}>Gain</Box>
+                <Box sx={{ height: 16 }} />
+              </Box>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: '100%' }}>
+                <Box sx={{ height: 34, display: 'flex', alignItems: 'center' }}>Freq</Box>
+                <Box sx={{ height: 16 }} />
+              </Box>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: '100%' }}>
+                <Box sx={{ height: 34, display: 'flex', alignItems: 'center' }}>Q</Box>
+                <Box sx={{ height: 16 }} />
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 1,
+              }}
+            >
+              <Divider orientation='vertical' flexItem sx={{ borderLeft: '1px solid rgba(255,255,255,0.22)', alignSelf: 'stretch' }} />
+              {BANDS.map((b) => (
+                <Fragment key={b.index}>
+                  <BandControlColumn def={b} />
+                  <Divider orientation='vertical' flexItem sx={{ borderLeft: '1px solid rgba(255,255,255,0.22)', alignSelf: 'stretch' }} />
+                </Fragment>
+              ))}
+            </Box>
+          </Box>
+
+          {/* 下右: OUT フェーダー（ZeroComp と同じ ParameterFader） */}
+          <Box
+            sx={{
+              gridColumn: '2 / 3',
+              gridRow: '2 / 3',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+            }}
+          >
+            <ParameterFader
+              parameterId='OUTPUT_GAIN'
+              label='OUTPUT'
+              min={-24}
+              max={24}
+              defaultValue={0}
+              sliderHeight={faderHeight}
+              wheelStep={1}
+              wheelStepFine={0.1}
+              scaleMarks={[
+                { value: 24, label: '+24' },
+                { value: 12, label: '+12' },
+                { value: 0, label: '0' },
+                { value: -12, label: '-12' },
+                { value: -24, label: '-24' },
+              ]}
+            />
           </Box>
         </Paper>
       </Box>
+
+      {/* プラグイン (non-web) 時のみ右下コーナーに擬似リサイズハンドル。
+          WebView overlay として window_action を叩いて本体サイズを追従させる。
+          ZeroComp と同じ実装。 */}
+      {!IS_WEB_MODE && <div
+        id='resizeHandle'
+        onPointerDown={onDragStart}
+        onPointerMove={onDrag}
+        onPointerUp={onDragEnd}
+        style={{
+          position: 'fixed',
+          right: 0,
+          bottom: 0,
+          width: 24,
+          height: 24,
+          cursor: 'nwse-resize',
+          zIndex: 2147483647,
+          backgroundColor: 'transparent',
+        }}
+        title='Resize'
+      />}
 
       <LicenseDialog open={licenseOpen} onClose={() => setLicenseOpen(false)} />
       <GlobalDialog />

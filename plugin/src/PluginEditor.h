@@ -13,8 +13,8 @@ class ZeroEQAudioProcessorEditor : public juce::AudioProcessorEditor,
                                    private juce::Timer
 {
 public:
-    static constexpr int kMinWidth  = 720;
-    static constexpr int kMinHeight = 420;
+    static constexpr int kMinWidth  = 875;
+    static constexpr int kMinHeight = 450;
     static constexpr int kMaxWidth  = 2560;
     static constexpr int kMaxHeight = 1440;
 
@@ -52,12 +52,14 @@ private:
     std::vector<std::unique_ptr<juce::WebSliderRelay>>                   bandFreqRelays;
     std::vector<std::unique_ptr<juce::WebSliderRelay>>                   bandGainRelays;
     std::vector<std::unique_ptr<juce::WebSliderRelay>>                   bandQRelays;
+    std::vector<std::unique_ptr<juce::WebComboBoxRelay>>                 bandSlopeRelays;
 
     std::vector<std::unique_ptr<juce::WebToggleButtonParameterAttachment>> bandOnAttachments;
     std::vector<std::unique_ptr<juce::WebComboBoxParameterAttachment>>     bandTypeAttachments;
     std::vector<std::unique_ptr<juce::WebSliderParameterAttachment>>       bandFreqAttachments;
     std::vector<std::unique_ptr<juce::WebSliderParameterAttachment>>       bandGainAttachments;
     std::vector<std::unique_ptr<juce::WebSliderParameterAttachment>>       bandQAttachments;
+    std::vector<std::unique_ptr<juce::WebComboBoxParameterAttachment>>     bandSlopeAttachments;
 
     juce::WebControlParameterIndexReceiver controlParameterIndexReceiver;
 

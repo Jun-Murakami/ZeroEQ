@@ -86,22 +86,35 @@ bool Analyzer::drainAndCompute(float* outDb) noexcept
     fft_.performRealOnlyForwardTransform(fftScratch_.data());
 
     // マグニチュード（ハーフ複素）→ dB → log-freq リサンプル → 表示用配列
-    //  NOTE: 現状は単純な log 補間。生成ロジックは UI 仕様確定後に詰める。
+    //  低域は複数の表示ビンが同じ FFT ビンに集まる（FFT の線形周波数解像度の制約）ため、
+    //  隣接 FFT ビン間を dB 空間で線形補間して階段状を防ぐ。
     if (outDb != nullptr)
     {
         const float norm = 2.0f / static_cast<float>(kFftSize);
+        // 表示上限: min(22kHz, Nyquist)
+        const float maxHz = juce::jmin(kMaxDisplayHz, static_cast<float>(sampleRate_ * 0.5));
+
+        auto magDbAtBin = [&](int bin) noexcept -> float
+        {
+            const float re = fftScratch_[static_cast<size_t>(bin * 2)];
+            const float im = fftScratch_[static_cast<size_t>(bin * 2 + 1)];
+            const float mag = std::sqrt(re * re + im * im) * norm;
+            return juce::Decibels::gainToDecibels(mag, -120.0f);
+        };
+
         for (int i = 0; i < kNumDisplayBins; ++i)
         {
-            // log-freq: 20Hz..sampleRate/2 を kNumDisplayBins で対数等分
+            // log-freq: 20Hz..maxHz を kNumDisplayBins で対数等分
             const float t  = static_cast<float>(i) / static_cast<float>(kNumDisplayBins - 1);
-            const float hz = 20.0f * std::pow(static_cast<float>(sampleRate_ * 0.5) / 20.0f, t);
+            const float hz = 20.0f * std::pow(maxHz / 20.0f, t);
             const float binF = hz * static_cast<float>(kFftSize) / static_cast<float>(sampleRate_);
-            const int   b  = juce::jlimit(1, kNumBins - 1, static_cast<int>(std::round(binF)));
 
-            const float re = fftScratch_[static_cast<size_t>(b * 2)];
-            const float im = fftScratch_[static_cast<size_t>(b * 2 + 1)];
-            const float mag = std::sqrt(re * re + im * im) * norm;
-            const float db  = juce::Decibels::gainToDecibels(mag, -120.0f);
+            // dB 空間で隣接 FFT ビン間を線形補間（低域の階段解消）
+            const int   b0   = juce::jlimit(1, kNumBins - 2, static_cast<int>(std::floor(binF)));
+            const float frac = juce::jlimit(0.0f, 1.0f, binF - static_cast<float>(b0));
+            const float db0  = magDbAtBin(b0);
+            const float db1  = magDbAtBin(b0 + 1);
+            const float db   = db0 + frac * (db1 - db0);
 
             // スムージング（アタック速い、リリース遅い）
             const float prev = smoothedDb_[static_cast<size_t>(i)];

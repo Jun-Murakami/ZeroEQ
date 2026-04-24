@@ -324,7 +324,7 @@ export const ParameterFader: React.FC<ParameterFaderProps> = ({
         position: 'relative',
       }}
     >
-      <Box sx={{ height: 36, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', width: '100%' }}>
+      <Box sx={{ height: 20, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', width: '100%' }}>
         <Typography
           variant='caption'
           sx={{
@@ -339,7 +339,7 @@ export const ParameterFader: React.FC<ParameterFaderProps> = ({
         </Typography>
       </Box>
 
-      <Box sx={{ display: 'flex', height: SLIDER_HEIGHT, width: '100%', justifyContent: 'center', mb: '14px', ...controlDimSx }}>
+      <Box sx={{ display: 'flex', height: SLIDER_HEIGHT, width: '100%', justifyContent: 'center', mb: '4px', ...controlDimSx }}>
         <Box
           sx={{ position: 'relative', display: 'flex', alignItems: 'center' }}
           ref={wheelRef}
@@ -406,7 +406,7 @@ export const ParameterFader: React.FC<ParameterFaderProps> = ({
         </Box>
       </Box>
 
-      <Box sx={{ display: 'flex', alignItems: 'center', mt: '10px', ...controlDimSx }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mt: '2px', ...controlDimSx }}>
         <StyledInput
           className='block-host-shortcuts'
           inputRef={inputElRef}

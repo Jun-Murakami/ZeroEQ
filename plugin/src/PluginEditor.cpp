@@ -208,16 +208,18 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
       bypassAttachment      { *p.getState().getParameter(ze::id::BYPASS.getParamID()),        webBypassRelay,       nullptr },
       outputGainAttachment  { *p.getState().getParameter(ze::id::OUTPUT_GAIN.getParamID()),   webOutputGainRelay,   nullptr },
       analyzerModeAttachment{ *p.getState().getParameter(ze::id::ANALYZER_MODE.getParamID()), webAnalyzerModeRelay, nullptr },
-      bandOnRelays          { makeBandRelays<juce::WebToggleButtonRelay>(&ze::id::bandOnID)   },
-      bandTypeRelays        { makeBandRelays<juce::WebComboBoxRelay>    (&ze::id::bandTypeID) },
-      bandFreqRelays        { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandFreqID) },
-      bandGainRelays        { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandGainID) },
-      bandQRelays           { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandQID)    },
-      bandOnAttachments     { makeBandAttachments<juce::WebToggleButtonParameterAttachment>(p.getState(), bandOnRelays,   &ze::id::bandOnID)   },
-      bandTypeAttachments   { makeBandAttachments<juce::WebComboBoxParameterAttachment>    (p.getState(), bandTypeRelays, &ze::id::bandTypeID) },
-      bandFreqAttachments   { makeBandAttachments<juce::WebSliderParameterAttachment>      (p.getState(), bandFreqRelays, &ze::id::bandFreqID) },
-      bandGainAttachments   { makeBandAttachments<juce::WebSliderParameterAttachment>      (p.getState(), bandGainRelays, &ze::id::bandGainID) },
-      bandQAttachments      { makeBandAttachments<juce::WebSliderParameterAttachment>      (p.getState(), bandQRelays,    &ze::id::bandQID)    },
+      bandOnRelays          { makeBandRelays<juce::WebToggleButtonRelay>(&ze::id::bandOnID)    },
+      bandTypeRelays        { makeBandRelays<juce::WebComboBoxRelay>    (&ze::id::bandTypeID)  },
+      bandFreqRelays        { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandFreqID)  },
+      bandGainRelays        { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandGainID)  },
+      bandQRelays           { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandQID)     },
+      bandSlopeRelays       { makeBandRelays<juce::WebComboBoxRelay>    (&ze::id::bandSlopeID) },
+      bandOnAttachments     { makeBandAttachments<juce::WebToggleButtonParameterAttachment>(p.getState(), bandOnRelays,    &ze::id::bandOnID)    },
+      bandTypeAttachments   { makeBandAttachments<juce::WebComboBoxParameterAttachment>    (p.getState(), bandTypeRelays,  &ze::id::bandTypeID)  },
+      bandFreqAttachments   { makeBandAttachments<juce::WebSliderParameterAttachment>      (p.getState(), bandFreqRelays,  &ze::id::bandFreqID)  },
+      bandGainAttachments   { makeBandAttachments<juce::WebSliderParameterAttachment>      (p.getState(), bandGainRelays,  &ze::id::bandGainID)  },
+      bandQAttachments      { makeBandAttachments<juce::WebSliderParameterAttachment>      (p.getState(), bandQRelays,     &ze::id::bandQID)     },
+      bandSlopeAttachments  { makeBandAttachments<juce::WebComboBoxParameterAttachment>    (p.getState(), bandSlopeRelays, &ze::id::bandSlopeID) },
       webView{
           [this]() {
               auto opts = makeWebViewOptionsWithPreLaunchArgs(audioProcessor)
@@ -237,11 +239,12 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
                   .withOptionsFrom(webOutputGainRelay)
                   .withOptionsFrom(webAnalyzerModeRelay);
 
-              for (auto& r : bandOnRelays)   opts = opts.withOptionsFrom(*r);
-              for (auto& r : bandTypeRelays) opts = opts.withOptionsFrom(*r);
-              for (auto& r : bandFreqRelays) opts = opts.withOptionsFrom(*r);
-              for (auto& r : bandGainRelays) opts = opts.withOptionsFrom(*r);
-              for (auto& r : bandQRelays)    opts = opts.withOptionsFrom(*r);
+              for (auto& r : bandOnRelays)    opts = opts.withOptionsFrom(*r);
+              for (auto& r : bandTypeRelays)  opts = opts.withOptionsFrom(*r);
+              for (auto& r : bandFreqRelays)  opts = opts.withOptionsFrom(*r);
+              for (auto& r : bandGainRelays)  opts = opts.withOptionsFrom(*r);
+              for (auto& r : bandQRelays)     opts = opts.withOptionsFrom(*r);
+              for (auto& r : bandSlopeRelays) opts = opts.withOptionsFrom(*r);
 
               opts = opts
                   .withNativeFunction(
@@ -298,7 +301,7 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
    #endif
 
     addAndMakeVisible(webView);
-    setSize(900, 520);
+    setSize(875, 450);
 
     setResizable(true, true);
     setResizeLimits(kMinWidth, kMinHeight, kMaxWidth, kMaxHeight);
@@ -323,7 +326,7 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
     {
         if (safeSelf == nullptr) return;
         if (safeSelf->getWidth() < kMinWidth || safeSelf->getHeight() < kMinHeight)
-            safeSelf->setSize(900, 520);
+            safeSelf->setSize(875, 450);
     });
 
     startTimerHz(30);

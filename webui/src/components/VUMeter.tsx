@@ -36,11 +36,18 @@ const crisp = (v: number, dpr: number): number => Math.round(v * dpr) / dpr + 0.
 // ============================
 // レベルメーター（dB, 上=0dBFS）
 // ============================
-export const LevelMeterBar: React.FC<{ level: number; label: string; width?: number; height?: number }> = ({
+export const LevelMeterBar: React.FC<{
+  level: number;
+  label?: string;
+  width?: number;
+  height?: number;
+  showLabel?: boolean;
+}> = ({
   level,
   label,
   width,
   height,
+  showLabel = true,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cssW = width ?? DEFAULT_BAR_WIDTH;
@@ -82,6 +89,17 @@ export const LevelMeterBar: React.FC<{ level: number; label: string; width?: num
     });
   }, [level, cssW, cssH]);
 
+  const canvasEl = (
+    <canvas
+      ref={canvasRef}
+      width={cssW}
+      height={cssH}
+      style={{ borderRadius: 2, border: '1px solid #333', width: cssW, height: cssH }}
+    />
+  );
+
+  if (!showLabel) return canvasEl;
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <Box sx={{ height: 36, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', pb: 0.25 }}>
@@ -89,12 +107,7 @@ export const LevelMeterBar: React.FC<{ level: number; label: string; width?: num
           {label}
         </Typography>
       </Box>
-      <canvas
-        ref={canvasRef}
-        width={cssW}
-        height={cssH}
-        style={{ borderRadius: 2, border: '1px solid #333', width: cssW, height: cssH }}
-      />
+      {canvasEl}
     </Box>
   );
 };

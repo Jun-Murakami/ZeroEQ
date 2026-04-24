@@ -42,8 +42,8 @@ juce_add_plugin(ZeroEQ
     PLUGIN_CODE ZrEq
     FORMATS AU VST3 Standalone AAX
     PLUGIN_AU_MAIN_TYPE "aufx"
-    VST3_CATEGORIES "Fx" "Dynamics"
-    AAX_CATEGORY "AAX_ePlugInCategory_Dynamics"
+    VST3_CATEGORIES "Fx" "EQ"
+    AAX_CATEGORY "AAX_ePlugInCategory_EQ"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
