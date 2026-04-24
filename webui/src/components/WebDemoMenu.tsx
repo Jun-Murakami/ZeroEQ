@@ -37,7 +37,7 @@ const MENU_SECTIONS: ReadonlyArray<MenuSection> = [
   {
     title: 'Download Plugin',
     links: [
-      { label: 'ZeroEQ',    href: 'https://jun-murakami.web.app/#zeroEQ' },
+      { label: 'ZeroEQ',    href: 'https://jun-murakami.web.app/#zeroEq' },
       { label: 'ZeroComp',  href: 'https://jun-murakami.web.app/#zeroComp' },
       { label: 'ZeroLimit', href: 'https://jun-murakami.web.app/#zeroLimit' },
     ],
