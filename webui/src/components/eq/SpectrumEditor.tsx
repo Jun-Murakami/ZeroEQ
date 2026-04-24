@@ -105,13 +105,19 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
 
   // スペアナ bins は本コンポーネント内で juceBridge を購読する（親 App に state を持たせると
   // 30Hz の spectrumUpdate 毎に App ツリー全体が再レンダする）。
+  //
+  // 防御: イベントに含まれる側だけ state を更新する（`undefined` で上書きしない）。
+  //  バックエンドで pre/post は別インスタンスで、message thread の timer が audio thread の
+  //  pushBlock の Pre/Post 間を横切ると、片方が drain 可能で他方がそうでない瞬間が発生する。
+  //  その瞬間 emit される event は片方だけのデータを含む。常に `setXxx(s.xxx)` で書くと
+  //  もう片方が `undefined` になり、1 フレームだけ塗り/線が消えてチラつく。
   const [preBins, setPreBins] = useState<number[] | undefined>(undefined);
   const [postBins, setPostBins] = useState<number[] | undefined>(undefined);
   useEffect(() => {
     const id = juceBridge.addEventListener('spectrumUpdate', (d: unknown) => {
       const s = d as SpectrumUpdateData;
-      setPreBins(s.pre);
-      setPostBins(s.post);
+      if (s.pre)  setPreBins(s.pre);
+      if (s.post) setPostBins(s.post);
     });
     return () => juceBridge.removeEventListener(id);
   }, []);

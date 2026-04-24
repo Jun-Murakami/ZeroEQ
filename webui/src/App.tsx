@@ -231,8 +231,8 @@ function App() {
                 onChange={(_, v) => { if (v !== null) setEqDbMax(v); }}
                 sx={{
                   '& .MuiToggleButton-root': {
-                    padding: '1px 5px',
-                    fontSize: '10px',
+                    padding: '2px 7px',
+                    fontSize: '11px',
                     lineHeight: 1,
                     minWidth: 0,
                     color: 'rgba(255,255,255,0.4)',
@@ -256,7 +256,7 @@ function App() {
               sx={{
                 position: 'absolute',
                 right: 10,
-                top: 1,
+                top: 5,
                 zIndex: 2,
                 display: 'flex',
                 gap: 0.5,
@@ -267,9 +267,9 @@ function App() {
                 size='small'
                 variant='outlined'
                 sx={{
-                  padding: '1px 6px',
+                  padding: '2px 8px',
                   minWidth: 0,
-                  fontSize: '10px',
+                  fontSize: '11px',
                   lineHeight: 1,
                   textTransform: 'none',
                   color: 'rgba(255,255,255,0.4)',
@@ -288,9 +288,9 @@ function App() {
                 size='small'
                 variant='outlined'
                 sx={{
-                  padding: '1px 6px',
+                  padding: '2px 8px',
                   minWidth: 0,
-                  fontSize: '10px',
+                  fontSize: '11px',
                   lineHeight: 1,
                   textTransform: 'none',
                   color: spectrumOn ? '#fff' : 'rgba(255,255,255,0.4)',
