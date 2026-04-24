@@ -5,6 +5,8 @@ A **zero-latency**, spectrum-analyzer-integrated parametric equalizer for broadc
 You can find the demo site running on WebAssembly here.
 https://zeroeq-demo.web.app/
 
+<img width="1003" height="706" alt="sc_zeroeq" src="https://github.com/user-attachments/assets/6c49c8a4-a18d-455d-aaf3-981998c5f7a5" />
+
 ## Highlights
 
 - **0-sample latency** — all bands are minimum-phase IIR biquads. No lookahead, no oversampling, no linear-phase FFT. Null-tests bit-identical with the input when every band is OFF (or Bypass is on).
