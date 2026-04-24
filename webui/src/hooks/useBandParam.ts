@@ -15,9 +15,13 @@ import { BANDS, SLOPE_VALUES_DB, slopeIdxToDb, slopeDbToIdx, type SlopeDbPerOct 
 //   複数コンポーネントから同じ ID にアクセスしても store 経由で同期する。
 // ============================================================================
 
-// APVTS backend 不在の判定。mirror は backend 無しでも state を返すため
-// `initialisationData.__juce__sliders` の配列が空かどうかで判別する。
+// "live backend" 判定:
+//  - Web デモモード (VITE_RUNTIME=web): Vite エイリアスで juce-shim が resolve され、
+//    shim が自前で state を持ちつつ WebAudioEngine → WASM に転送する → live 扱い。
+//  - DAW モード: JUCE の WebBrowserComponent が __JUCE__.initialisationData を注入し、
+//    __juce__sliders 配列が非空なら live。
 const hasLiveBackend = (): boolean => {
+  if (import.meta.env.VITE_RUNTIME === 'web') return true;
   const init = typeof window !== 'undefined' ? window.__JUCE__?.initialisationData : undefined;
   const sliders = (init as Record<string, unknown> | undefined)?.['__juce__sliders'];
   return Array.isArray(sliders) && sliders.length > 0;

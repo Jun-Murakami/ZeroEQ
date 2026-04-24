@@ -1,7 +1,7 @@
 /**
  * Web Audio API + WASM AudioWorklet のマネージャ（ZeroEQ Web デモ版）。
  *
- * - ソース 1 本（初期は docs/sample.mp3、ユーザがファイル差し替え可能）
+ * - ソース 1 本（ユーザがファイル差し替え可能）
  * - トランスポート（play / pause / seek / loop）は C++ WASM 側が保持
  * - この層はファイルデコード、worklet ↔ main thread 中継、UI イベント発行のみ
  */
@@ -20,7 +20,6 @@ export interface WebMeterSnapshot {
   outRmsLeft: number;
   outRmsRight: number;
   outMomentary: number;
-  grDb: number;
 }
 
 export class WebAudioEngine
@@ -30,13 +29,11 @@ export class WebAudioEngine
   private listeners = new Map<string, EventCallback>();
   private nextListenerId = 1;
 
-  // 最新状態（worklet から state-update で随時更新）
   private position = 0;
   private duration = 0;
   private isPlayingState = false;
   private loopEnabled = true;
 
-  // 現在のソース情報（UI 表示用）
   private sourceName = '';
   private sourceLoaded = false;
 
@@ -44,36 +41,12 @@ export class WebAudioEngine
   private startPromise: Promise<void> | null = null;
   private initResolvers: Array<() => void> = [];
 
-  /**
-   * 初回起動。**必ずユーザタップ/クリックのハンドラから同期的に**呼ぶこと。
-   *
-   * iOS WebKit の unlock 条件:
-   *   1. `new AudioContext()` をジェスチャ同期フレーム内で実行
-   *   2. 同じフレームで `resume()` の Promise を発行（fire-and-forget ではなく
-   *      戻り Promise を保持して重い init より前に await する）
-   *   3. 同じフレームで無音 BufferSource を start する。1 サンプルでは
-   *      unlock にカウントされない iOS 版があるため、ネイティブ sampleRate
-   *      で 128 サンプル以上を再生する
-   *
-   * 重い init（WASM / sample.mp3 ロード）に入る前に resume の完了を待つことで、
-   * ジェスチャ失効後に `ensureAudioContext()` が再 resume を試みて iOS に黙殺
-   * されるケースを回避する。
-   */
   startFromUserGesture(): Promise<void>
   {
     if (this.startPromise) return this.startPromise;
-
-    // ---- 同期フレーム: iOS 向け audio unlock ----
-    // sampleRate はハードウェア任せ。固定すると HW が 44.1k の iOS で起動失敗する。
     const ctx = new AudioContext();
     this.audioContext = ctx;
-
-    // ジェスチャ同期で resume を発行。戻り Promise は捨てず、重い init より
-    // 前に await する（fire-and-forget だと古い iOS で昇格しない実例あり）。
     const resumed = ctx.resume();
-
-    // 1 サンプル (22050 Hz) だと unlock にカウントされない iOS 版があるため、
-    // ネイティブ sampleRate で 128 サンプル分の無音を prime する。
     const primeFrames = 128;
     const silent = ctx.createBuffer(1, primeFrames, ctx.sampleRate);
     const src = ctx.createBufferSource();
@@ -81,10 +54,7 @@ export class WebAudioEngine
     src.connect(ctx.destination);
     src.start(0);
 
-    // ---- 以降は非同期（ジェスチャスコープを抜けても OK） ----
     this.startPromise = (async () => {
-      // resume が先に完了していないと worklet 接続後も context が suspended
-      // のまま出力が捨てられる。失敗時は completeInit 側の動作に任せる。
       try { await resumed; } catch { /* ignore */ }
       await this.completeInit();
     })();
@@ -98,14 +68,12 @@ export class WebAudioEngine
     try
     {
       await ctx.audioWorklet.addModule('/worklet/dsp-processor.js');
-
       this.workletNode = new AudioWorkletNode(ctx, 'dsp-processor', {
         numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
       });
       this.workletNode.connect(ctx.destination);
       this.workletNode.port.onmessage = (e) => this.handleWorkletMessage(e.data);
 
-      // WASM ロード
       const resp = await fetch('/wasm/zeroeq_dsp.wasm');
       if (resp.ok)
       {
@@ -161,7 +129,6 @@ export class WebAudioEngine
       case 'wasm-ready':
         this.initResolvers.forEach((r) => r());
         this.initResolvers = [];
-        // Worklet 初期化直後に loop=true を反映
         this.setLoop(this.loopEnabled);
         break;
 
@@ -191,34 +158,31 @@ export class WebAudioEngine
           });
         }
 
-        // プラグイン側の meterUpdate と同じ形式で流す
+        // plugin 側 meterUpdate と同じ形式。ZeroEQ UI では output のみ使用するが、
+        // 他も送っておけば将来拡張時に流用可能。
         const m = msg.meter as WebMeterSnapshot;
         this.emit('meterUpdate', {
           meteringMode: m.mode,
           input: {
-            truePeakLeft:  m.inPeakLeft,
-            truePeakRight: m.inPeakRight,
-            rmsLeft:       m.inRmsLeft,
-            rmsRight:      m.inRmsRight,
-            momentary:     m.inMomentary,
+            peakLeft:  m.inPeakLeft,  peakRight: m.inPeakRight,
+            rmsLeft:   m.inRmsLeft,   rmsRight:  m.inRmsRight,
+            momentary: m.inMomentary,
           },
           output: {
-            truePeakLeft:  m.outPeakLeft,
-            truePeakRight: m.outPeakRight,
-            rmsLeft:       m.outRmsLeft,
-            rmsRight:      m.outRmsRight,
-            momentary:     m.outMomentary,
+            peakLeft:  m.outPeakLeft, peakRight: m.outPeakRight,
+            rmsLeft:   m.outRmsLeft,  rmsRight:  m.outRmsRight,
+            momentary: m.outMomentary,
           },
-          grDb: m.grDb,
         });
 
-        // 波形スライス（optional）
-        const wf = msg.waveform as { sliceHz?: number; peaks?: number[]; grDb?: number[] } | null | undefined;
-        if (wf && wf.peaks && wf.grDb && wf.peaks.length > 0) {
-          this.emit('waveformUpdate', {
-            sliceHz: wf.sliceHz,
-            peaks:   wf.peaks,
-            grDb:    wf.grDb,
+        // Spectrum（optional — drain が新フレーム出した時だけ）
+        const spec = msg.spectrum as { numBins?: number; pre?: number[]; post?: number[] } | null | undefined;
+        if (spec)
+        {
+          this.emit('spectrumUpdate', {
+            numBins: spec.numBins,
+            pre: spec.pre,
+            post: spec.post,
           });
         }
         break;
@@ -228,7 +192,7 @@ export class WebAudioEngine
 
   // ====== ソースのロード ======
 
-  async loadSampleFromUrl(url: string, displayName = 'sample.mp3'): Promise<boolean>
+  async loadSampleFromUrl(url: string, displayName = 'sample'): Promise<boolean>
   {
     if (!this.audioContext) return false;
     try
@@ -269,7 +233,6 @@ export class WebAudioEngine
     const rightCopy = new Float32Array(
       audioBuf.numberOfChannels >= 2 ? audioBuf.getChannelData(1) : audioBuf.getChannelData(0),
     );
-
     this.workletNode?.port.postMessage({
       type: 'load-source',
       left:  leftCopy.buffer,
@@ -281,7 +244,6 @@ export class WebAudioEngine
     this.sourceName = displayName;
     this.sourceLoaded = true;
     this.duration = audioBuf.duration;
-
     this.emit('sourceLoaded', { name: displayName, duration: audioBuf.duration });
   }
 
@@ -295,18 +257,14 @@ export class WebAudioEngine
     await this.ensureAudioContext();
     this.workletNode?.port.postMessage({ type: 'set-playing', value: true });
     this.isPlayingState = true;
-    this.emit('transportUpdate', {
-      isPlaying: true, position: this.position, duration: this.duration, loopEnabled: this.loopEnabled,
-    });
+    this.emit('transportUpdate', { isPlaying: true, position: this.position, duration: this.duration, loopEnabled: this.loopEnabled });
   }
 
   pause(): void
   {
     this.workletNode?.port.postMessage({ type: 'set-playing', value: false });
     this.isPlayingState = false;
-    this.emit('transportUpdate', {
-      isPlaying: false, position: this.position, duration: this.duration, loopEnabled: this.loopEnabled,
-    });
+    this.emit('transportUpdate', { isPlaying: false, position: this.position, duration: this.duration, loopEnabled: this.loopEnabled });
   }
 
   seek(positionSec: number): void
@@ -321,31 +279,32 @@ export class WebAudioEngine
   {
     this.loopEnabled = enabled;
     this.workletNode?.port.postMessage({ type: 'set-loop', value: enabled });
-    this.emit('transportUpdate', {
-      isPlaying: this.isPlayingState, position: this.position, duration: this.duration, loopEnabled: enabled,
-    });
+    this.emit('transportUpdate', { isPlaying: this.isPlayingState, position: this.position, duration: this.duration, loopEnabled: enabled });
   }
 
-  // ====== パラメータ → WASM 直送（ZeroEQ の全パラメータ） ======
+  // ====== パラメータ → WASM 直送 ======
 
-  setThresholdDb(db: number): void     { this.workletNode?.port.postMessage({ type: 'set-param', param: 'threshold_db',   value: db }); }
-  setRatio(r: number): void            { this.workletNode?.port.postMessage({ type: 'set-param', param: 'ratio',          value: r  }); }
-  setKneeDb(k: number): void           { this.workletNode?.port.postMessage({ type: 'set-param', param: 'knee_db',        value: k  }); }
-  setAttackMs(ms: number): void        { this.workletNode?.port.postMessage({ type: 'set-param', param: 'attack_ms',      value: ms }); }
-  setReleaseMs(ms: number): void       { this.workletNode?.port.postMessage({ type: 'set-param', param: 'release_ms',     value: ms }); }
-  setOutputGainDb(db: number): void    { this.workletNode?.port.postMessage({ type: 'set-param', param: 'output_gain_db', value: db }); }
-  setAutoMakeup(on: boolean): void     { this.workletNode?.port.postMessage({ type: 'set-param', param: 'auto_makeup',    value: on }); }
-  setMode(modeIdx: number): void       { this.workletNode?.port.postMessage({ type: 'set-param', param: 'mode',           value: modeIdx }); }
-  setMeteringMode(mode: number): void  { this.workletNode?.port.postMessage({ type: 'set-param', param: 'metering_mode',  value: mode }); }
-  setBypass(b: boolean): void          { this.workletNode?.port.postMessage({ type: 'set-param', param: 'bypass',         value: b }); }
-  resetMomentary(): void               { this.workletNode?.port.postMessage({ type: 'set-param', param: 'reset_momentary', value: true }); }
+  // 11 バンド固有
+  setBandOn    (idx: number, on: boolean) : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'on',    value: on    }); }
+  setBandType  (idx: number, t: number)   : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'type',  value: t     }); }
+  setBandFreq  (idx: number, hz: number)  : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'freq',  value: hz    }); }
+  setBandGain  (idx: number, db: number)  : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'gain',  value: db    }); }
+  setBandQ     (idx: number, q: number)   : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'q',     value: q     }); }
+  setBandSlope (idx: number, slope: number): void{ this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'slope', value: slope }); }
+
+  // グローバル
+  setBypass       (b: boolean) : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'bypass',         value: b }); }
+  setOutputGainDb (db: number) : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'output_gain_db', value: db }); }
+  setAnalyzerMode (m: number)  : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'analyzer_mode',  value: m }); }
+  setMeteringMode (m: number)  : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'metering_mode',  value: m }); }
+  resetMomentary  ()           : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'reset_momentary', value: true }); }
 
   // ====== 状態取得 ======
 
-  getIsPlaying(): boolean  { return this.isPlayingState; }
+  getIsPlaying(): boolean   { return this.isPlayingState; }
   getLoopEnabled(): boolean { return this.loopEnabled; }
-  getPosition(): number    { return this.position; }
-  getDuration(): number    { return this.duration; }
+  getPosition(): number     { return this.position; }
+  getDuration(): number     { return this.duration; }
 }
 
 export const webAudioEngine = new WebAudioEngine();

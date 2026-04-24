@@ -7,7 +7,7 @@
 #include <cmath>
 #include <vector>
 
-namespace zc_wasm {
+namespace ze_wasm {
 
 class MomentaryProcessor
 {
@@ -135,4 +135,4 @@ private:
     float currentLKFS = MIN_LKFS;
 };
 
-} // namespace zc_wasm
+} // namespace ze_wasm

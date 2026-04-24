@@ -28,15 +28,19 @@ if(EMSCRIPTEN)
         "_dsp_set_loop" "_dsp_seek_normalised"
         "_dsp_consume_stopped_at_end"
         "_dsp_get_position" "_dsp_get_duration"
-        # DSP パラメータ（ZeroEQ 用）
-        "_dsp_set_threshold_db" "_dsp_set_ratio"
-        "_dsp_set_knee_db" "_dsp_set_attack_ms" "_dsp_set_release_ms"
-        "_dsp_set_output_gain_db" "_dsp_set_auto_makeup"
-        "_dsp_set_mode" "_dsp_set_metering_mode" "_dsp_set_bypass"
-        # メイン処理 / メーター
-        "_dsp_process_block" "_dsp_get_meter_data" "_dsp_reset_momentary"
-        # 波形表示（Pro-L / Pro-C 風オシロ）
-        "_dsp_get_waveform_slices" "_dsp_get_waveform_slice_hz"
+        # バンドパラメータ（ZeroEQ: 11 バンド × 5〜6 種類）
+        "_dsp_set_band_on" "_dsp_set_band_type"
+        "_dsp_set_band_freq" "_dsp_set_band_gain"
+        "_dsp_set_band_q"  "_dsp_set_band_slope"
+        # グローバルパラメータ
+        "_dsp_set_bypass"
+        "_dsp_set_output_gain_db"
+        "_dsp_set_analyzer_mode"
+        "_dsp_set_metering_mode"
+        # メイン処理 / メーター / スペクトラム
+        "_dsp_process_block"
+        "_dsp_get_meter_data" "_dsp_reset_momentary"
+        "_dsp_drain_spectrum" "_dsp_spectrum_bins"
     )
     list(JOIN EXPORTED_FUNCTIONS "," EXPORTED_FUNCTIONS_STR)
 

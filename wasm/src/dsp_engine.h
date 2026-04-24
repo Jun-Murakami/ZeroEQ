@@ -1,48 +1,43 @@
 // WASM デモ用 DSP オーケストレータ（ZeroEQ 版）。
-//  - 1 本のオーディオソース（PCM L/R）
-//  - トランスポート（再生 / 停止 / シーク / ループ）
-//  - Compressor（Mode, Auto Makeup 含む）
-//  - Input / GR / Output メーター（Peak / RMS / Momentary）
+//  - 1 本のオーディオソース（PCM L/R）+ トランスポート
+//  - 11 バンド EQ (Equalizer)
+//  - Pre / Post アナライザ (Analyzer × 2)
+//  - Output ゲイン
+//  - Input / Output メーター（Peak / RMS / Momentary LKFS）
 #pragma once
 
-#include "compressor.h"
+#include "equalizer.h"
+#include "analyzer.h"
 #include "momentary_processor.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <vector>
 
-namespace zc_wasm {
+namespace ze_wasm {
 
 class DspEngine
 {
 public:
-    // 波形表示用スライスレート（plugin 側と揃える）
-    static constexpr double kWaveformSliceHz = 200.0;
-    static constexpr int    kWaveformRingSize = 2048; // ~10 秒ぶん
+    static constexpr int kNumBands = Equalizer::kNumBands;    // 11
+    static constexpr int kSpectrumBins = Analyzer::kNumDisplayBins; // 256
 
     void prepare(double sr, int maxBlock) noexcept
     {
         sampleRate = std::isfinite(sr) && sr > 0.0 ? sr : 48000.0;
         maxBlockSize = std::max(1, maxBlock);
 
-        compressor.prepare(sampleRate);
+        equalizer.prepare(sampleRate);
+        preAnalyzer .prepare(sampleRate, maxBlockSize);
+        postAnalyzer.prepare(sampleRate, maxBlockSize);
         momentaryIn .prepare(sampleRate, maxBlockSize);
         momentaryOut.prepare(sampleRate, maxBlockSize);
 
-        // 波形スライス準備（plugin と同じ 200 Hz）
-        waveformSliceSize = std::max(1, static_cast<int>(std::round(sampleRate / kWaveformSliceHz)));
-        waveformPeaks.assign(static_cast<size_t>(kWaveformRingSize), 0.0f);
-        waveformGrDb .assign(static_cast<size_t>(kWaveformRingSize), 0.0f);
-        waveformWriteIdx = 0;
-        waveformReadIdx  = 0;
-        waveformSliceSampleCount = 0;
-        waveformSlicePeakAccum   = 0.0f;
-        waveformSliceGrAccum     = 0.0f;
-
-        // per-sample gain スクラッチ
-        waveformGainScratch.assign(static_cast<size_t>(maxBlockSize), 1.0f);
+        // ワーキング用スクラッチ
+        scratchL.assign(static_cast<size_t>(maxBlockSize), 0.0f);
+        scratchR.assign(static_cast<size_t>(maxBlockSize), 0.0f);
 
         resetMeters();
     }
@@ -54,8 +49,8 @@ public:
         if (numSamples <= 0) { clearSource(); return; }
         sourceL.assign(L, L + numSamples);
         sourceR.assign(R ? R : L, (R ? R : L) + numSamples);
-        for (auto& s : sourceL) s = sanitizeFinite(s);
-        for (auto& s : sourceR) s = sanitizeFinite(s);
+        for (auto& s : sourceL) s = sanitize(s);
+        for (auto& s : sourceR) s = sanitize(s);
         sourceNumSamples = numSamples;
         sourceRate       = std::isfinite(sourceSampleRate) && sourceSampleRate > 0.0 ? sourceSampleRate : sampleRate;
 
@@ -83,7 +78,6 @@ public:
         if (p && stoppedAtEnd) { playPos = 0.0; stoppedAtEnd = false; }
         playing = p;
     }
-
     bool isPlaying() const noexcept { return playing; }
 
     void setLoop(bool enabled) noexcept { loopEnabled = enabled; }
@@ -100,14 +94,11 @@ public:
 
     double getPositionSeconds() const noexcept
     {
-        if (sourceRate <= 0.0) return 0.0;
-        return playPos / sourceRate;
+        return sourceRate > 0.0 ? playPos / sourceRate : 0.0;
     }
-
     double getDurationSeconds() const noexcept
     {
-        if (sourceRate <= 0.0) return 0.0;
-        return static_cast<double>(sourceNumSamples) / sourceRate;
+        return sourceRate > 0.0 ? static_cast<double>(sourceNumSamples) / sourceRate : 0.0;
     }
 
     bool consumeStoppedAtEnd() noexcept
@@ -118,17 +109,19 @@ public:
 
     // ====== パラメータ ======
 
-    void setThresholdDb(float db) noexcept { thresholdDb = clampFinite(db, -80.0f, 0.0f, 0.0f); compressor.setThresholdDb(thresholdDb); }
-    void setRatio(float r) noexcept        { ratio = clampFinite(r, 1.0f, 100.0f, 1.0f);        compressor.setRatio(ratio); }
-    void setKneeDb(float k) noexcept       { compressor.setKneeDb(k); }
-    void setAttackMs(float ms) noexcept    { compressor.setAttackMs(ms); }
-    void setReleaseMs(float ms) noexcept   { compressor.setReleaseMs(ms); }
-    void setOutputGainDb(float db) noexcept{ outputGainDb = clampFinite(db, -24.0f, 24.0f, 0.0f); }
-    void setAutoMakeup(bool on) noexcept   { autoMakeupOn = on; }
-    void setMode(int m) noexcept           { compressor.setMode(m); }
+    void setBandOn     (int i, bool on)   noexcept { if (inRange(i)) { bands[i].on = on; push(i); } }
+    void setBandType   (int i, int type)  noexcept { if (inRange(i)) { bands[i].type = clampType(type); push(i); } }
+    void setBandFreqHz (int i, float hz)  noexcept { if (inRange(i)) { bands[i].freqHz = clampF(hz, 20.0f, 20000.0f, 1000.0f); push(i); } }
+    void setBandGainDb (int i, float db)  noexcept { if (inRange(i)) { bands[i].gainDb = clampF(db, -32.0f, 32.0f, 0.0f); push(i); } }
+    void setBandQ      (int i, float q)   noexcept { if (inRange(i)) { bands[i].q      = clampF(q,   0.1f,  18.0f, 1.0f); push(i); } }
+    void setBandSlopeDb(int i, int slope) noexcept { if (inRange(i)) { bands[i].slopeDbPerOct = slope; push(i); } }
 
-    void setMeteringMode(int mode) noexcept { meteringMode = mode; }
     void setBypass(bool b) noexcept         { bypass = b; }
+    void setOutputGainDb(float db) noexcept { outputGainDb = clampF(db, -24.0f, 24.0f, 0.0f); }
+    // 0=Off / 1=Pre / 2=Post / 3=Pre+Post
+    void setAnalyzerMode(int m) noexcept    { if (m < 0) m = 0; if (m > 3) m = 3; analyzerMode = m; }
+
+    void setMeteringMode(int m) noexcept { meteringMode = m; }
 
     // ====== メイン処理 ======
 
@@ -137,103 +130,81 @@ public:
         if (numSamples <= 0) return;
         if (numSamples > maxBlockSize)
         {
-            int offset = 0;
-            while (offset < numSamples)
+            int off = 0;
+            while (off < numSamples)
             {
-                const int chunk = std::min(maxBlockSize, numSamples - offset);
-                processBlock(outL + offset, outR + offset, chunk);
-                offset += chunk;
+                const int chunk = std::min(maxBlockSize, numSamples - off);
+                processBlock(outL + off, outR + off, chunk);
+                off += chunk;
             }
             return;
         }
 
-        // --- 1) ソース fetch ---
+        // 1) source fetch
         fetchSource(outL, outR, numSamples);
         sanitizeStereo(outL, outR, numSamples);
 
-        // --- 2) 入力メーター ---
+        // 2) Input メーター + momentary
         accumInMeters(outL, outR, numSamples);
         momentaryIn.processStereo(outL, outR, numSamples);
 
-        if (bypass)
-        {
-            accumOutMeters(outL, outR, numSamples);
-            momentaryOut.processStereo(outL, outR, numSamples);
-            return;
-        }
+        // 3) Pre アナライザ push（analyzerMode に応じて）
+        if (analyzerMode == 1 || analyzerMode == 3)
+            preAnalyzer.pushBlock(outL, outR, numSamples);
 
-        // 波形用に入力サンプル max(|L|,|R|) を事前キャッシュ（compressor が破壊する前）
-        if (static_cast<int>(waveformInputPeakScratch.size()) < numSamples)
-            waveformInputPeakScratch.resize(static_cast<size_t>(numSamples), 0.0f);
-        for (int i = 0; i < numSamples; ++i)
-            waveformInputPeakScratch[static_cast<size_t>(i)] = std::max(std::fabs(outL[i]), std::fabs(outR[i]));
+        // 4) EQ
+        if (!bypass)
+            equalizer.processBlock(outL, outR, numSamples);
 
-        // --- 3) Compressor（per-sample gain を scratch に取得）---
-        if (static_cast<int>(waveformGainScratch.size()) < numSamples)
-            waveformGainScratch.resize(static_cast<size_t>(numSamples), 1.0f);
-        float* gainPerSample = waveformGainScratch.data();
-        const float minGain = compressor.processStereoInPlace(outL, outR, numSamples, gainPerSample);
-
-        // 波形スライスに入力ピーク + per-sample gain を流す
-        accumWaveformSlices(waveformInputPeakScratch.data(), gainPerSample, numSamples);
-
-        // --- 4) Auto Makeup + Output Gain（プラグイン側と同じ式）---
-        const float autoMakeupDb = compressor.computeAutoMakeupDb();
-        const float effectiveDb = (autoMakeupOn ? autoMakeupDb : 0.0f) + outputGainDb;
-        const float total = sanitizeFinite(std::pow(10.0f, effectiveDb / 20.0f), 1.0f);
-        if (std::fabs(total - 1.0f) > 1.0e-6f)
+        // 5) Output gain
+        const float outGainLin = std::pow(10.0f, outputGainDb / 20.0f);
+        if (std::fabs(outGainLin - 1.0f) > 1.0e-6f)
         {
             for (int i = 0; i < numSamples; ++i)
             {
-                outL[i] *= total;
-                outR[i] *= total;
+                outL[i] *= outGainLin;
+                outR[i] *= outGainLin;
             }
         }
 
-        // --- 5) 出力メーター ---
+        // 6) Output メーター + momentary + Post アナライザ
         accumOutMeters(outL, outR, numSamples);
         momentaryOut.processStereo(outL, outR, numSamples);
-
-        // GR dB
-        const float grDb = (minGain > 0.0f && minGain < 1.0f) ? -20.0f * std::log10(minGain) : 0.0f;
-        if (grDb > grDbAccum) grDbAccum = grDb;
+        if (analyzerMode == 2 || analyzerMode == 3)
+            postAnalyzer.pushBlock(outL, outR, numSamples);
     }
 
-    // ====== メーターデータ取り出し ======
-    // レイアウト:
-    //   0: mode
-    //   1: inPeakL   2: inPeakR   3: inRmsL   4: inRmsR   5: inMomentary
-    //   6: outPeakL  7: outPeakR  8: outRmsL  9: outRmsR 10: outMomentary
-    //   11: grDb
-    //   12: reserved
+    // ====== メーターデータ ======
+    //  レイアウト（13 floats）:
+    //   0: meteringMode
+    //   1: inPeakL  2: inPeakR  3: inRmsL  4: inRmsR  5: inMomentary
+    //   6: outPeakL 7: outPeakR 8: outRmsL 9: outRmsR 10: outMomentary
+    //  11: reserved 12: reserved
     void getMeterData(float* out) noexcept
     {
         const float minDb   = -60.0f;
         const float minLkfs = -70.0f;
 
         out[0]  = static_cast<float>(meteringMode);
-        out[1]  = amplitudeToDb(inPeakAccumL, minDb);
-        out[2]  = amplitudeToDb(inPeakAccumR, minDb);
-        out[3]  = amplitudeToDb(inRmsAccumL,  minDb);
-        out[4]  = amplitudeToDb(inRmsAccumR,  minDb);
-        out[5]  = momentaryIn.getMomentaryLKFS();
-        if (out[5] < minLkfs) out[5] = minLkfs;
-        out[6]  = amplitudeToDb(outPeakAccumL, minDb);
-        out[7]  = amplitudeToDb(outPeakAccumR, minDb);
-        out[8]  = amplitudeToDb(outRmsAccumL,  minDb);
-        out[9]  = amplitudeToDb(outRmsAccumR,  minDb);
-        out[10] = momentaryOut.getMomentaryLKFS();
-        if (out[10] < minLkfs) out[10] = minLkfs;
-        out[11] = grDbAccum;
+        out[1]  = ampToDb(inPeakAccumL, minDb);
+        out[2]  = ampToDb(inPeakAccumR, minDb);
+        out[3]  = ampToDb(inRmsAccumL,  minDb);
+        out[4]  = ampToDb(inRmsAccumR,  minDb);
+        out[5]  = momentaryIn.getMomentaryLKFS();  if (out[5] < minLkfs) out[5] = minLkfs;
+        out[6]  = ampToDb(outPeakAccumL, minDb);
+        out[7]  = ampToDb(outPeakAccumR, minDb);
+        out[8]  = ampToDb(outRmsAccumL,  minDb);
+        out[9]  = ampToDb(outRmsAccumR,  minDb);
+        out[10] = momentaryOut.getMomentaryLKFS(); if (out[10] < minLkfs) out[10] = minLkfs;
+        out[11] = 0.0f;
         out[12] = 0.0f;
 
-        // プラグイン版 PluginEditor::timerCallback と同じ減衰を適用。
-        constexpr float kMeterDecay = 0.89f;
-        inPeakAccumL  *= kMeterDecay; inPeakAccumR  *= kMeterDecay;
-        outPeakAccumL *= kMeterDecay; outPeakAccumR *= kMeterDecay;
-        inRmsAccumL   *= kMeterDecay; inRmsAccumR   *= kMeterDecay;
-        outRmsAccumL  *= kMeterDecay; outRmsAccumR  *= kMeterDecay;
-        grDbAccum     *= kMeterDecay;
+        // plugin 60Hz タイマ想定の減衰（0.965 ≈ ~20dB/s リリース）
+        constexpr float kDecay = 0.965f;
+        inPeakAccumL  *= kDecay; inPeakAccumR  *= kDecay;
+        outPeakAccumL *= kDecay; outPeakAccumR *= kDecay;
+        inRmsAccumL   *= kDecay; inRmsAccumR   *= kDecay;
+        outRmsAccumL  *= kDecay; outRmsAccumR  *= kDecay;
     }
 
     void resetMomentaryHold() noexcept
@@ -242,52 +213,50 @@ public:
         momentaryOut.reset();
     }
 
-    // ====== 波形スライス取り出し（JS から pull）======
-    int getWaveformSlices(float* peaks, float* grDb, int maxN) noexcept
+    // ====== スペクトラム pull ======
+    // outPre/outPost: それぞれ size = kSpectrumBins (256) の float 配列。
+    //   hop たまっていれば drain → FFT → dB 配列を書き込み、戻り値は bit0=pre, bit1=post。
+    //   呼び出し頻度は JS 側 ~60Hz を想定。
+    int drainSpectrum(float* outPre, float* outPost) noexcept
     {
-        if (maxN <= 0 || !peaks || !grDb) return 0;
-        int count = 0;
-        while (count < maxN && waveformReadIdx != waveformWriteIdx)
-        {
-            peaks[count] = waveformPeaks[static_cast<size_t>(waveformReadIdx)];
-            grDb [count] = waveformGrDb [static_cast<size_t>(waveformReadIdx)];
-            waveformReadIdx = (waveformReadIdx + 1) % kWaveformRingSize;
-            ++count;
-        }
-        return count;
-    }
-
-    double getWaveformSliceHz() const noexcept
-    {
-        return sampleRate / static_cast<double>(std::max(1, waveformSliceSize));
+        int flags = 0;
+        if (outPre  && (analyzerMode == 1 || analyzerMode == 3))
+            if (preAnalyzer.drainAndCompute(outPre))  flags |= 0x1;
+        if (outPost && (analyzerMode == 2 || analyzerMode == 3))
+            if (postAnalyzer.drainAndCompute(outPost)) flags |= 0x2;
+        return flags;
     }
 
 private:
-    static float amplitudeToDb(float amp, float floorDb) noexcept
+    static bool  inRange(int i) noexcept { return i >= 0 && i < kNumBands; }
+    static int   clampType(int t) noexcept { if (t < 0) t = 0; if (t > 5) t = 5; return t; }
+    static float sanitize(float v) noexcept { return std::isfinite(v) ? v : 0.0f; }
+    static float clampF(float v, float lo, float hi, float fallback) noexcept
     {
-        if (! std::isfinite(amp) || amp <= 0.0f) return floorDb;
+        if (!std::isfinite(v)) return fallback;
+        return v < lo ? lo : (v > hi ? hi : v);
+    }
+    static void sanitizeStereo(float* L, float* R, int n) noexcept
+    {
+        for (int i = 0; i < n; ++i) { L[i] = sanitize(L[i]); R[i] = sanitize(R[i]); }
+    }
+    static float ampToDb(float amp, float floorDb) noexcept
+    {
+        if (!std::isfinite(amp) || amp <= 0.0f) return floorDb;
         const float db = 20.0f * std::log10(amp);
         return std::max(db, floorDb);
     }
 
-    static float sanitizeFinite(float v, float fallback = 0.0f) noexcept
+    void push(int i) noexcept
     {
-        return std::isfinite(v) ? v : fallback;
-    }
-
-    static float clampFinite(float v, float lo, float hi, float fallback) noexcept
-    {
-        v = sanitizeFinite(v, fallback);
-        return v < lo ? lo : (v > hi ? hi : v);
-    }
-
-    static void sanitizeStereo(float* L, float* R, int n) noexcept
-    {
-        for (int i = 0; i < n; ++i)
-        {
-            L[i] = sanitizeFinite(L[i]);
-            R[i] = sanitizeFinite(R[i]);
-        }
+        Equalizer::BandSpec spec;
+        spec.on            = bands[i].on;
+        spec.type          = bands[i].type;
+        spec.freqHz        = bands[i].freqHz;
+        spec.gainDb        = bands[i].gainDb;
+        spec.q             = bands[i].q;
+        spec.slopeDbPerOct = bands[i].slopeDbPerOct;
+        equalizer.setBand(i, spec);
     }
 
     void fetchSource(float* outL, float* outR, int n) noexcept
@@ -298,7 +267,6 @@ private:
             std::memset(outR, 0, sizeof(float) * static_cast<size_t>(n));
             return;
         }
-
         for (int i = 0; i < n; ++i)
         {
             double idx = playPos;
@@ -308,16 +276,11 @@ private:
 
             if (i0 >= sourceNumSamples)
             {
-                if (loopEnabled)
-                {
-                    playPos = 0.0; stoppedAtEnd = false;
-                    idx = 0.0; i0 = 0; i1 = 1; frac = 0.0;
-                }
+                if (loopEnabled) { playPos = 0.0; stoppedAtEnd = false; idx = 0.0; i0 = 0; i1 = 1; frac = 0.0; }
                 else
                 {
                     outL[i] = 0.0f; outR[i] = 0.0f;
-                    playing = false;
-                    stoppedAtEnd = true;
+                    playing = false; stoppedAtEnd = true;
                     for (int k = i + 1; k < n; ++k) { outL[k] = 0.0f; outR[k] = 0.0f; }
                     return;
                 }
@@ -341,8 +304,8 @@ private:
         double sumL = 0.0, sumR = 0.0;
         for (int i = 0; i < n; ++i)
         {
-            const float l = sanitizeFinite(L[i]);
-            const float r = sanitizeFinite(R[i]);
+            const float l = sanitize(L[i]);
+            const float r = sanitize(R[i]);
             const float aL = std::fabs(l);
             const float aR = std::fabs(r);
             if (aL > pL) pL = aL;
@@ -350,8 +313,7 @@ private:
             sumL += static_cast<double>(l) * l;
             sumR += static_cast<double>(r) * r;
         }
-        inPeakAccumL = pL;
-        inPeakAccumR = pR;
+        inPeakAccumL = pL; inPeakAccumR = pR;
         const float rmsL = static_cast<float>(std::sqrt(sumL / static_cast<double>(n)));
         const float rmsR = static_cast<float>(std::sqrt(sumR / static_cast<double>(n)));
         if (rmsL > inRmsAccumL) inRmsAccumL = rmsL;
@@ -364,8 +326,8 @@ private:
         double sumL = 0.0, sumR = 0.0;
         for (int i = 0; i < n; ++i)
         {
-            const float l = sanitizeFinite(L[i]);
-            const float r = sanitizeFinite(R[i]);
+            const float l = sanitize(L[i]);
+            const float r = sanitize(R[i]);
             const float aL = std::fabs(l);
             const float aR = std::fabs(r);
             if (aL > pL) pL = aL;
@@ -373,8 +335,7 @@ private:
             sumL += static_cast<double>(l) * l;
             sumR += static_cast<double>(r) * r;
         }
-        outPeakAccumL = pL;
-        outPeakAccumR = pR;
+        outPeakAccumL = pL; outPeakAccumR = pR;
         const float rmsL = static_cast<float>(std::sqrt(sumL / static_cast<double>(n)));
         const float rmsR = static_cast<float>(std::sqrt(sumR / static_cast<double>(n)));
         if (rmsL > outRmsAccumL) outRmsAccumL = rmsL;
@@ -387,45 +348,9 @@ private:
         outPeakAccumL = outPeakAccumR = 0.0f;
         inRmsAccumL = inRmsAccumR = 0.0f;
         outRmsAccumL = outRmsAccumR = 0.0f;
-        grDbAccum = 0.0f;
     }
 
-    // 入力サンプル + per-sample gain を slice にダウンサンプリングして内部リングに push。
-    //   peak    = slice 内の max(|L|,|R|) の最大
-    //   grDb    = per-sample gain から算出した slice 内最大リダクション（dB）
-    void accumWaveformSlices(const float* inputPeakPerSample, const float* perSampleGain, int n) noexcept
-    {
-        for (int i = 0; i < n; ++i)
-        {
-            const float mergedAbs = inputPeakPerSample[i];
-            if (mergedAbs > waveformSlicePeakAccum) waveformSlicePeakAccum = mergedAbs;
-
-            const float gLin = perSampleGain[i];
-            const float perSampleGrDb = (gLin >= 1.0f)
-                ? 0.0f
-                : -20.0f * std::log10(std::max(gLin, 1.0e-6f));
-            if (perSampleGrDb > waveformSliceGrAccum) waveformSliceGrAccum = perSampleGrDb;
-
-            if (++waveformSliceSampleCount >= waveformSliceSize)
-            {
-                const int nextWrite = (waveformWriteIdx + 1) % kWaveformRingSize;
-                if (nextWrite == waveformReadIdx)
-                {
-                    // 満杯 → 最古を 1 つ捨てる
-                    waveformReadIdx = (waveformReadIdx + 1) % kWaveformRingSize;
-                }
-                waveformPeaks[static_cast<size_t>(waveformWriteIdx)] = waveformSlicePeakAccum;
-                waveformGrDb [static_cast<size_t>(waveformWriteIdx)] = waveformSliceGrAccum;
-                waveformWriteIdx = nextWrite;
-
-                waveformSliceSampleCount = 0;
-                waveformSlicePeakAccum   = 0.0f;
-                waveformSliceGrAccum     = 0.0f;
-            }
-        }
-    }
-
-    // state
+    // ---- state ----
     double sampleRate = 48000.0;
     int    maxBlockSize = 128;
 
@@ -441,39 +366,36 @@ private:
     bool   loopEnabled = true;
     bool   stoppedAtEnd = false;
 
-    // Params
-    float thresholdDb   = 0.0f;
-    float ratio         = 1.0f;
-    float outputGainDb  = 0.0f;
-    bool  autoMakeupOn  = false;
-    int   meteringMode  = 0;
+    // EQ state (cached for partial updates)
+    struct BandState
+    {
+        bool on = false; int type = 0;
+        float freqHz = 1000.0f, gainDb = 0.0f, q = 1.0f;
+        int slopeDbPerOct = 18;
+    };
+    std::array<BandState, kNumBands> bands{};
+
+    // Global
     bool  bypass        = false;
+    float outputGainDb  = 0.0f;
+    int   analyzerMode  = 3;      // default Pre+Post
+    int   meteringMode  = 0;
 
     // DSP
-    Compressor         compressor;
-    MomentaryProcessor momentaryIn;
-    MomentaryProcessor momentaryOut;
+    Equalizer           equalizer;
+    Analyzer            preAnalyzer;
+    Analyzer            postAnalyzer;
+    MomentaryProcessor  momentaryIn;
+    MomentaryProcessor  momentaryOut;
 
-    // Meter accumulators（amplitude で保持、取り出し時に dB 変換）
+    // Meter accumulators
     float inPeakAccumL  = 0.0f, inPeakAccumR  = 0.0f;
     float outPeakAccumL = 0.0f, outPeakAccumR = 0.0f;
     float inRmsAccumL   = 0.0f, inRmsAccumR   = 0.0f;
     float outRmsAccumL  = 0.0f, outRmsAccumR  = 0.0f;
-    float grDbAccum     = 0.0f;
 
-    // Waveform ring（Pro-L 風オシロ表示用）
-    std::vector<float> waveformPeaks;
-    std::vector<float> waveformGrDb;
-    int   waveformWriteIdx         = 0;
-    int   waveformReadIdx          = 0;
-    int   waveformSliceSize        = 240;
-    int   waveformSliceSampleCount = 0;
-    float waveformSlicePeakAccum   = 0.0f;
-    float waveformSliceGrAccum     = 0.0f;
-
-    // per-sample gain と入力ピークのスクラッチ（compressor に渡す / 波形集計に使う）
-    std::vector<float> waveformGainScratch;
-    std::vector<float> waveformInputPeakScratch;
+    // スクラッチ
+    std::vector<float> scratchL, scratchR;
 };
 
-} // namespace zc_wasm
+} // namespace ze_wasm

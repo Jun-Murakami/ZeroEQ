@@ -3,8 +3,8 @@
  * Vite エイリアスで本家モジュールの代わりにこれが解決される。
  *
  * ZeroEQ の APVTS パラメータ
- *   THRESHOLD / RATIO / KNEE_DB / ATTACK_MS / RELEASE_MS / OUTPUT_GAIN
- *   AUTO_MAKEUP / MODE / METERING_MODE
+ *   BYPASS / OUTPUT_GAIN / ANALYZER_MODE
+ *   BAND{i}_ON / BAND{i}_TYPE / BAND{i}_FREQ / BAND{i}_GAIN / BAND{i}_Q / BAND{i}_SLOPE (i=0..10)
  * を Web 側でエミュレートし、値変化を WebAudioEngine へ直送する。
  *
  * 重要: フェーダー側 (ParameterFader / HorizontalParameter) は `setScaled` を
@@ -34,64 +34,107 @@ function makeLinearSlider(defaultScaled: number, min: number, max: number): WebS
   });
 }
 
+// ---- BAND デフォルト（plugin の ze::id::defaultFor と同じ 11 本のレイアウト）----
+type BandDefault = {
+  typeIdx: number;    // 0=Bell / 1=LowShelf / 2=HighShelf / 3=HighPass / 4=LowPass / 5=Notch
+  freqHz: number;
+  q: number;
+  slopeIdx: number;   // 0=6 / 1=12 / 2=18 / 3=24 / 4=36 / 5=48
+  on: boolean;
+};
+
+const BAND_DEFAULTS: BandDefault[] = [
+  // idx 0,1: HPF (30, 60 Hz) — default OFF
+  { typeIdx: 3, freqHz: 30,    q: 0.707, slopeIdx: 2, on: false },
+  { typeIdx: 3, freqHz: 60,    q: 0.707, slopeIdx: 2, on: false },
+  // idx 2: LowShelf
+  { typeIdx: 1, freqHz: 120,   q: 0.707, slopeIdx: 2, on: true  },
+  // idx 3..8: Bell × 6
+  { typeIdx: 0, freqHz: 250,   q: 1.0,   slopeIdx: 2, on: true  },
+  { typeIdx: 0, freqHz: 500,   q: 1.0,   slopeIdx: 2, on: true  },
+  { typeIdx: 0, freqHz: 1000,  q: 1.0,   slopeIdx: 2, on: true  },
+  { typeIdx: 0, freqHz: 2000,  q: 1.0,   slopeIdx: 2, on: true  },
+  { typeIdx: 0, freqHz: 4000,  q: 1.0,   slopeIdx: 2, on: true  },
+  { typeIdx: 0, freqHz: 8000,  q: 1.0,   slopeIdx: 2, on: true  },
+  // idx 9: HighShelf
+  { typeIdx: 2, freqHz: 12000, q: 0.707, slopeIdx: 2, on: true  },
+  // idx 10: LPF — default OFF
+  { typeIdx: 4, freqHz: 18000, q: 0.707, slopeIdx: 2, on: false },
+];
+
+const SLOPE_VALUES = [6, 12, 18, 24, 36, 48] as const;
+
 function registerDefaults(): void
 {
-  // --- Slider 系（すべて scaled 値 ⇔ 線形正規化。plugin 側と同じ仕組み）---
-  sliderStates.set('THRESHOLD',   makeLinearSlider(0.0, -80, 0));
-  sliderStates.set('RATIO',       makeLinearSlider(1.0, 1, 100));
-  sliderStates.set('KNEE_DB',     makeLinearSlider(6.0, 0, 24));
-  sliderStates.set('ATTACK_MS',   makeLinearSlider(10.0, 0.1, 500));
-  sliderStates.set('RELEASE_MS',  makeLinearSlider(100.0, 0.1, 2000));
+  // --- グローバル ---
+  toggleStates.set('BYPASS', new WebToggleState(false));
   sliderStates.set('OUTPUT_GAIN', makeLinearSlider(0.0, -24, 24));
+  comboBoxStates.set('ANALYZER_MODE', new WebComboBoxState(3, 4)); // Off / Pre / Post / Pre+Post (default Pre+Post)
 
-  // --- Toggle ---
-  toggleStates.set('AUTO_MAKEUP', new WebToggleState(false));
-
-  // --- Choice ---
-  comboBoxStates.set('MODE',          new WebComboBoxState(0, 4)); // VCA / Opto / FET / Vari-Mu
-  comboBoxStates.set('METERING_MODE', new WebComboBoxState(0, 3)); // Peak / RMS / Momentary
-  comboBoxStates.set('DISPLAY_MODE',  new WebComboBoxState(0, 2)); // Metering / Waveform（UI のみ、DSP 送信なし）
-  comboBoxStates.set('ANALYZER_MODE', new WebComboBoxState(3, 4)); // Off / Pre / Post / Pre+Post（default Pre+Post）
+  // --- 11 バンドぶんの state 登録 ---
+  for (let i = 0; i < BAND_DEFAULTS.length; i++)
+  {
+    const d = BAND_DEFAULTS[i];
+    toggleStates  .set(`BAND${i}_ON`,   new WebToggleState(d.on));
+    comboBoxStates.set(`BAND${i}_TYPE`, new WebComboBoxState(d.typeIdx, 6));
+    sliderStates  .set(`BAND${i}_FREQ`, makeLinearSlider(d.freqHz, 20, 20000));
+    sliderStates  .set(`BAND${i}_GAIN`, makeLinearSlider(0.0,      -32, 32));
+    sliderStates  .set(`BAND${i}_Q`,    makeLinearSlider(d.q,      0.1, 18));
+    comboBoxStates.set(`BAND${i}_SLOPE`, new WebComboBoxState(d.slopeIdx, 6));
+  }
 
   // --- 値変化 → WASM エンジンへ直送 ---
-  sliderStates.get('THRESHOLD')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setThresholdDb(sliderStates.get('THRESHOLD')!.getScaledValue());
-  });
-  sliderStates.get('RATIO')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setRatio(sliderStates.get('RATIO')!.getScaledValue());
-  });
-  sliderStates.get('KNEE_DB')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setKneeDb(sliderStates.get('KNEE_DB')!.getScaledValue());
-  });
-  sliderStates.get('ATTACK_MS')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setAttackMs(sliderStates.get('ATTACK_MS')!.getScaledValue());
-  });
-  sliderStates.get('RELEASE_MS')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setReleaseMs(sliderStates.get('RELEASE_MS')!.getScaledValue());
+  toggleStates.get('BYPASS')!.valueChangedEvent.addListener(() => {
+    webAudioEngine.setBypass(toggleStates.get('BYPASS')!.getValue());
   });
   sliderStates.get('OUTPUT_GAIN')!.valueChangedEvent.addListener(() => {
     webAudioEngine.setOutputGainDb(sliderStates.get('OUTPUT_GAIN')!.getScaledValue());
   });
-  toggleStates.get('AUTO_MAKEUP')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setAutoMakeup(toggleStates.get('AUTO_MAKEUP')!.getValue());
-  });
-  comboBoxStates.get('MODE')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setMode(comboBoxStates.get('MODE')!.getChoiceIndex());
-  });
-  comboBoxStates.get('METERING_MODE')!.valueChangedEvent.addListener(() => {
-    webAudioEngine.setMeteringMode(comboBoxStates.get('METERING_MODE')!.getChoiceIndex());
+  comboBoxStates.get('ANALYZER_MODE')!.valueChangedEvent.addListener(() => {
+    webAudioEngine.setAnalyzerMode(comboBoxStates.get('ANALYZER_MODE')!.getChoiceIndex());
   });
 
-  // 初期値を WASM に反映（WASM 未初期化時は noop になる）
-  webAudioEngine.setThresholdDb(sliderStates.get('THRESHOLD')!.getScaledValue());
-  webAudioEngine.setRatio(sliderStates.get('RATIO')!.getScaledValue());
-  webAudioEngine.setKneeDb(sliderStates.get('KNEE_DB')!.getScaledValue());
-  webAudioEngine.setAttackMs(sliderStates.get('ATTACK_MS')!.getScaledValue());
-  webAudioEngine.setReleaseMs(sliderStates.get('RELEASE_MS')!.getScaledValue());
+  for (let i = 0; i < BAND_DEFAULTS.length; i++)
+  {
+    const idx = i;
+    toggleStates.get(`BAND${idx}_ON`)!.valueChangedEvent.addListener(() => {
+      webAudioEngine.setBandOn(idx, toggleStates.get(`BAND${idx}_ON`)!.getValue());
+    });
+    comboBoxStates.get(`BAND${idx}_TYPE`)!.valueChangedEvent.addListener(() => {
+      webAudioEngine.setBandType(idx, comboBoxStates.get(`BAND${idx}_TYPE`)!.getChoiceIndex());
+    });
+    sliderStates.get(`BAND${idx}_FREQ`)!.valueChangedEvent.addListener(() => {
+      webAudioEngine.setBandFreq(idx, sliderStates.get(`BAND${idx}_FREQ`)!.getScaledValue());
+    });
+    sliderStates.get(`BAND${idx}_GAIN`)!.valueChangedEvent.addListener(() => {
+      webAudioEngine.setBandGain(idx, sliderStates.get(`BAND${idx}_GAIN`)!.getScaledValue());
+    });
+    sliderStates.get(`BAND${idx}_Q`)!.valueChangedEvent.addListener(() => {
+      webAudioEngine.setBandQ(idx, sliderStates.get(`BAND${idx}_Q`)!.getScaledValue());
+    });
+    comboBoxStates.get(`BAND${idx}_SLOPE`)!.valueChangedEvent.addListener(() => {
+      const slopeIdx = comboBoxStates.get(`BAND${idx}_SLOPE`)!.getChoiceIndex();
+      const slopeDb = SLOPE_VALUES[Math.max(0, Math.min(SLOPE_VALUES.length - 1, slopeIdx))];
+      webAudioEngine.setBandSlope(idx, slopeDb);
+    });
+  }
+
+  // --- 初期値を WASM にプッシュ（WASM 未初期化時は worklet 側で postMessage が早期 return する）---
+  webAudioEngine.setBypass(toggleStates.get('BYPASS')!.getValue());
   webAudioEngine.setOutputGainDb(sliderStates.get('OUTPUT_GAIN')!.getScaledValue());
-  webAudioEngine.setAutoMakeup(toggleStates.get('AUTO_MAKEUP')!.getValue());
-  webAudioEngine.setMode(comboBoxStates.get('MODE')!.getChoiceIndex());
-  webAudioEngine.setMeteringMode(comboBoxStates.get('METERING_MODE')!.getChoiceIndex());
+  webAudioEngine.setAnalyzerMode(comboBoxStates.get('ANALYZER_MODE')!.getChoiceIndex());
+  for (let i = 0; i < BAND_DEFAULTS.length; i++)
+  {
+    const idx = i;
+    webAudioEngine.setBandOn   (idx, toggleStates.get(`BAND${idx}_ON`)!.getValue());
+    webAudioEngine.setBandType (idx, comboBoxStates.get(`BAND${idx}_TYPE`)!.getChoiceIndex());
+    webAudioEngine.setBandFreq (idx, sliderStates.get(`BAND${idx}_FREQ`)!.getScaledValue());
+    webAudioEngine.setBandGain (idx, sliderStates.get(`BAND${idx}_GAIN`)!.getScaledValue());
+    webAudioEngine.setBandQ    (idx, sliderStates.get(`BAND${idx}_Q`)!.getScaledValue());
+    const slopeIdx = comboBoxStates.get(`BAND${idx}_SLOPE`)!.getChoiceIndex();
+    const slopeDb = SLOPE_VALUES[Math.max(0, Math.min(SLOPE_VALUES.length - 1, slopeIdx))];
+    webAudioEngine.setBandSlope(idx, slopeDb);
+  }
 }
 
 registerDefaults();
