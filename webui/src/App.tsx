@@ -31,7 +31,7 @@ const RIGHT_COL_WIDTH = 80;
 // Web デモ版カードの寸法。plugin の最小サイズ (875×450) に合わせ、11 バンド列が
 // 詰まらず並ぶ横幅を確保しつつ、高さは plugin のデフォルトと同じ 450 を採用。
 const WEB_CARD_MAX_WIDTH = 960;
-const WEB_CARD_HEIGHT    = 520;
+const WEB_CARD_HEIGHT    = 650;
 
 function App() {
   useHostShortcutForwarding();

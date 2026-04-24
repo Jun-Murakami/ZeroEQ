@@ -29,15 +29,17 @@ const MENU_SECTIONS: ReadonlyArray<MenuSection> = [
   {
     title: 'Download Plugin',
     links: [
+      { label: 'ZeroEQ',    href: 'https://jun-murakami.web.app/#zeroEQ' },
+      { label: 'ZeroComp',  href: 'https://jun-murakami.web.app/#zeroComp' },
       { label: 'ZeroLimit', href: 'https://jun-murakami.web.app/#zeroLimit' },
-      { label: 'ZeroEQ',  href: 'https://jun-murakami.web.app/#zeroComp' },
     ],
   },
   {
     title: 'Source Code',
     links: [
+      { label: 'ZeroEQ',    href: 'https://github.com/Jun-Murakami/ZeroEQ' },
+      { label: 'ZeroComp',  href: 'https://github.com/Jun-Murakami/ZeroComp' },
       { label: 'ZeroLimit', href: 'https://github.com/Jun-Murakami/ZeroLimit' },
-      { label: 'ZeroEQ',  href: 'https://github.com/Jun-Murakami/ZeroEQ' },
     ],
   },
   {
