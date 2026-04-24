@@ -11,12 +11,12 @@ import LicenseDialog from './components/LicenseDialog';
 import { WebTransportBar } from './components/WebTransportBar';
 import { WebDemoMenu } from './components/WebDemoMenu';
 import { ParameterFader } from './components/ParameterFader';
-import { LevelMeterBar } from './components/VUMeter';
+import { OutputMeterWidget } from './components/OutputMeterWidget';
 import { SpectrumEditor } from './components/eq/SpectrumEditor';
 import { BandControlColumn } from './components/eq/BandControlColumn';
 import { BANDS } from './components/eq/BandDefs';
 import { useAllBandStates } from './hooks/useBandParam';
-import type { MeterUpdateData, SpectrumUpdateData } from './types';
+import { useJuceComboBoxIndex } from './hooks/useJuceParam';
 import './App.css';
 
 const IS_WEB_MODE = import.meta.env.VITE_RUNTIME === 'web';
@@ -32,13 +32,9 @@ function App() {
   useHostShortcutForwarding();
   useGlobalZoomGuard();
 
-  // 入力メーターはスペアナで可視化されるので削除、OUT のみ表示
-  const [outPeakL, setOutPeakL] = useState(-60);
-  const [outPeakR, setOutPeakR] = useState(-60);
-  const [preBins, setPreBins] = useState<number[] | undefined>(undefined);
-  const [postBins, setPostBins] = useState<number[] | undefined>(undefined);
-
   // 全 11 バンドの APVTS 状態（SpectrumEditor で合成カーブ + ノード drag / ホイール操作）
+  //  OUT メーターと spectrum bins の購読は各子コンポーネントに内包してあるため、
+  //  App 自体は 30Hz のイベントで再レンダしない (band パラメータ変更時のみ)。
   const allBandStates = useAllBandStates();
   const bandsForSpectrum = allBandStates.map((s) => ({
     on: s.on,
@@ -52,23 +48,6 @@ function App() {
     setQ: s.setQ,
     setSlopeDb: s.setSlopeDb,
   }));
-
-  useEffect(() => {
-    const meterId = juceBridge.addEventListener('meterUpdate', (d: unknown) => {
-      const m = d as MeterUpdateData;
-      setOutPeakL(m.output?.peakLeft ?? -60);
-      setOutPeakR(m.output?.peakRight ?? -60);
-    });
-    const specId = juceBridge.addEventListener('spectrumUpdate', (d: unknown) => {
-      const s = d as SpectrumUpdateData;
-      setPreBins(s.pre);
-      setPostBins(s.post);
-    });
-    return () => {
-      juceBridge.removeEventListener(meterId);
-      juceBridge.removeEventListener(specId);
-    };
-  }, []);
 
   useEffect(() => {
     juceBridge.whenReady(() => {
@@ -95,39 +74,6 @@ function App() {
     return () => ro.disconnect();
   }, []);
 
-  // レベルメーターの高さはスペアナ高さに追従（spectrumSize.height をそのまま使う）
-  // dB スケールの描画: 左側列に canvas で目盛りを描く
-  const meterScaleRef = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    const canvas = meterScaleRef.current;
-    if (!canvas) return;
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const w = 22;
-    const h = spectrumSize.height;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    // 目盛り値（ZeroComp LevelMeterBar と同じ -30..0 線形マップ）
-    const MIN_DB = -30;
-    const dbToY = (db: number) => h - ((Math.max(MIN_DB, Math.min(0, db)) - MIN_DB) / (0 - MIN_DB)) * h;
-    ctx.font = '10px "Red Hat Mono", monospace';
-    ctx.fillStyle = '#e0e0e0'; // primary text color
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    [0, -3, -6, -9, -12, -18, -24].forEach((db) => {
-      const y = dbToY(db);
-      // 上/下端に張り付くラベルはキャンバス内へ押し込む
-      const yClamped = db === 0 ? 6 : Math.min(h - 6, y);
-      ctx.fillText(db === 0 ? '0' : `${db}`, 2, yClamped);
-    });
-  }, [spectrumSize.height]);
-
   // OUTPUT フェーダーの高さ = バンド列の底と揃える。
   //  ParameterFader 内訳: label(20) + slider + mb(4) + mt(2) + input area(~20) ≈ slider + 46
   //  スライダーを気持ち長めに。
@@ -135,6 +81,12 @@ function App() {
 
   // EQ 縦軸の dB レンジ切替。スペアナ内左上にコンパクトなトグル。
   const [eqDbMax, setEqDbMax] = useState<number>(12);
+
+  // スペアナ表示モード: 0=Off / 1=Pre / 2=Post / 3=Pre+Post（既定 3）。
+  //  右上のトグルボタンで 0 ⇔ 3 を切替。off にすると backend が spectrumUpdate を emit しない。
+  const { index: analyzerMode, setIndex: setAnalyzerMode } = useJuceComboBoxIndex('ANALYZER_MODE');
+  const spectrumOn = analyzerMode !== 0;
+  const toggleSpectrum = () => setAnalyzerMode(spectrumOn ? 0 : 3);
 
   // オールリセット: 全 11 バンドを BANDS 定義のデフォルトに戻す（on/off も含む）。
   const resetAllBands = () => {
@@ -260,8 +212,6 @@ function App() {
             <SpectrumEditor
               width={spectrumSize.width}
               height={spectrumSize.height}
-              preBins={preBins}
-              postBins={postBins}
               bands={bandsForSpectrum}
               eqDbMax={eqDbMax}
             />
@@ -301,13 +251,15 @@ function App() {
               </ToggleButtonGroup>
             </Box>
 
-            {/* オールリセット（右上） */}
+            {/* 右上: Reset All + Spectrum トグル。flex-row で右端揃え。 */}
             <Box
               sx={{
                 position: 'absolute',
                 right: 10,
                 top: 1,
                 zIndex: 2,
+                display: 'flex',
+                gap: 0.5,
               }}
             >
               <Button
@@ -331,10 +283,32 @@ function App() {
               >
                 Reset All
               </Button>
+              <Button
+                onClick={toggleSpectrum}
+                size='small'
+                variant='outlined'
+                sx={{
+                  padding: '1px 6px',
+                  minWidth: 0,
+                  fontSize: '10px',
+                  lineHeight: 1,
+                  textTransform: 'none',
+                  color: spectrumOn ? '#fff' : 'rgba(255,255,255,0.4)',
+                  borderColor: spectrumOn ? 'rgba(79,195,247,0.55)' : 'rgba(255,255,255,0.12)',
+                  backgroundColor: spectrumOn ? 'rgba(79,195,247,0.22)' : 'transparent',
+                  '&:hover': {
+                    color: '#fff',
+                    borderColor: 'rgba(79,195,247,0.55)',
+                    backgroundColor: spectrumOn ? 'rgba(79,195,247,0.32)' : 'rgba(255,255,255,0.04)',
+                  },
+                }}
+              >
+                Spectrum
+              </Button>
             </Box>
           </Box>
 
-          {/* 上右: dB スケール + OUT L / R メーター（高さはスペアナに追従） */}
+          {/* 上右: OUT L / R メーター + dB スケール（widget が内部で meterUpdate を購読） */}
           <Box
             sx={{
               gridColumn: '2 / 3',
@@ -342,13 +316,10 @@ function App() {
               display: 'flex',
               justifyContent: 'center',
               alignItems: 'flex-start',
-              gap: 0.5,
               minHeight: 0,
             }}
           >
-            <LevelMeterBar level={outPeakL} width={20} height={spectrumSize.height} showLabel={false} />
-            <LevelMeterBar level={outPeakR} width={20} height={spectrumSize.height} showLabel={false} />
-            <canvas ref={meterScaleRef} style={{ display: 'block' }} />
+            <OutputMeterWidget height={spectrumSize.height} />
           </Box>
 
           {/* 下左: バンドコントロール群（space-between で可変ギャップ） */}

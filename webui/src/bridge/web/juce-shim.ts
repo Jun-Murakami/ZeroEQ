@@ -51,6 +51,7 @@ function registerDefaults(): void
   comboBoxStates.set('MODE',          new WebComboBoxState(0, 4)); // VCA / Opto / FET / Vari-Mu
   comboBoxStates.set('METERING_MODE', new WebComboBoxState(0, 3)); // Peak / RMS / Momentary
   comboBoxStates.set('DISPLAY_MODE',  new WebComboBoxState(0, 2)); // Metering / Waveform（UI のみ、DSP 送信なし）
+  comboBoxStates.set('ANALYZER_MODE', new WebComboBoxState(3, 4)); // Off / Pre / Post / Pre+Post（default Pre+Post）
 
   // --- 値変化 → WASM エンジンへ直送 ---
   sliderStates.get('THRESHOLD')!.valueChangedEvent.addListener(() => {

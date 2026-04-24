@@ -329,7 +329,9 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
             safeSelf->setSize(875, 450);
     });
 
-    startTimerHz(30);
+    // 60Hz。メーター / スペクトラム / DPI ポーリングの駆動源。
+    // ディスプレイ vsync と合い、スペクトラム描画が 30Hz より滑らかに見える。
+    startTimerHz(60);
 }
 
 ZeroEQAudioProcessorEditor::~ZeroEQAudioProcessorEditor()
@@ -442,9 +444,11 @@ void ZeroEQAudioProcessorEditor::timerCallback()
     pollAndMaybeNotifyDpiChange();
    #endif
 
-    // ---- メーター減衰係数（30Hz タイマで約 20 dB/sec のリリース）----
-    constexpr float kPeakDecay = 0.93f;
-    constexpr float kRmsDecay  = 0.93f;
+    // ---- メーター減衰係数（60Hz タイマで約 20 dB/sec のリリース）----
+    //  30Hz の 0.93 を per-second 保持率換算すると 0.93^30 ≈ 0.113。
+    //  60Hz 同等にするには x^60 = 0.113 → x ≈ 0.965。
+    constexpr float kPeakDecay = 0.965f;
+    constexpr float kRmsDecay  = 0.965f;
 
     auto readAndDecayMax = [](std::atomic<float>& slot, float decay) noexcept
     {

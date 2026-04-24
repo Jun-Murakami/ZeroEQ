@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { BANDS, SLOPE_VALUES_DB, slopeDbToIdx, slopeIdxToDb, type SlopeDbPerOct } from './BandDefs';
 import { sampleCurveDb, sampleSingleBandDb, type BandCurveState } from './eqCurve';
 import { formatHz, formatGain, formatQ } from './InlineNumberInput';
+import { juceBridge } from '../../bridge/juce';
+import type { SpectrumUpdateData } from '../../types';
+import { useJuceComboBoxIndex } from '../../hooks/useJuceParam';
 
 // ============================================================================
 // スペアナ + EQ エディタ
@@ -89,8 +92,6 @@ export interface BandInteractive {
 interface Props {
   width: number;
   height: number;
-  preBins?: number[];
-  postBins?: number[];
   bands: BandInteractive[];
   sampleRate?: number;
   eqDbMax?: number; // EQ 縦軸スケール（±eqDbMax）。既定 6。
@@ -99,8 +100,26 @@ interface Props {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const isFine = (e: PointerEvent | WheelEvent) => e.ctrlKey || e.metaKey || e.shiftKey;
 
-export function SpectrumEditor({ width, height, preBins, postBins, bands, sampleRate = 48000, eqDbMax = 6 }: Props) {
+export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbMax = 6 }: Props) {
   const eqDbToY = makeEqDbToY(eqDbMax);
+
+  // スペアナ bins は本コンポーネント内で juceBridge を購読する（親 App に state を持たせると
+  // 30Hz の spectrumUpdate 毎に App ツリー全体が再レンダする）。
+  const [preBins, setPreBins] = useState<number[] | undefined>(undefined);
+  const [postBins, setPostBins] = useState<number[] | undefined>(undefined);
+  useEffect(() => {
+    const id = juceBridge.addEventListener('spectrumUpdate', (d: unknown) => {
+      const s = d as SpectrumUpdateData;
+      setPreBins(s.pre);
+      setPostBins(s.post);
+    });
+    return () => juceBridge.removeEventListener(id);
+  }, []);
+
+  // ANALYZER_MODE: 0=Off / 1=Pre / 2=Post / 3=Pre+Post。0 の時はスペクトラムの塗り/線を描かない。
+  const { index: analyzerMode } = useJuceComboBoxIndex('ANALYZER_MODE');
+  const showPre  = analyzerMode === 1 || analyzerMode === 3;
+  const showPost = analyzerMode === 2 || analyzerMode === 3;
 
   // mount-once の useEffect で setup されるポインタハンドラから最新 eqDbMax を参照するための ref。
   // ref を経由しないと、ハンドラは mount 時の eqDbMax を恒久的にキャプチャしてしまい、
@@ -283,9 +302,9 @@ export function SpectrumEditor({ width, height, preBins, postBins, bands, sample
       ctx.lineWidth = 1.2;
       ctx.stroke();
     };
-    if (preBins)  drawSpectrumFill(preBins);
-    if (postBins) drawSpectrumFill(postBins);
-    if (postBins) drawSpectrumOutline(postBins);
+    if (showPre  && preBins)  drawSpectrumFill(preBins);
+    if (showPost && postBins) drawSpectrumFill(postBins);
+    if (showPost && postBins) drawSpectrumOutline(postBins);
 
     // 合成 EQ カーブの計算元になる curveStates
     const curveStates: BandCurveState[] = bands.map((s, i) => ({
@@ -412,7 +431,7 @@ export function SpectrumEditor({ width, height, preBins, postBins, bands, sample
 
       ctx.restore();
     }
-  }, [width, height, preBins, postBins, bands, sampleRate, freqAxis, activeIdx, hoveredIdx, eqDbMax]);
+  }, [width, height, preBins, postBins, bands, sampleRate, freqAxis, activeIdx, hoveredIdx, eqDbMax, showPre, showPost]);
 
   // ---- ポインタ / ホイールのインタラクション ----
   useEffect(() => {

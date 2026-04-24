@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Box, IconButton, MenuItem, Select } from '@mui/material';
 import { InteractiveKnob } from './InteractiveKnob';
 import { FilterIcon } from './FilterIcon';
@@ -31,7 +32,10 @@ const SWITCH_SIZE = 24;   // ノブより小さめに。中のアイコンを相
 const SWITCH_ICON_SIZE = 20;
 const SLOPE_SELECT_HEIGHT = 26;  // ノブ行よりやや低め。数値入力欄と同じ高さの気配で揃える。
 
-export function BandControlColumn({ def }: Props) {
+// 1 本のバンド UI。内部で useBandState 購読するので、親 App の再レンダに連動させず、
+// 自分が購読している APVTS 値が変わった時だけ再レンダするように React.memo で包む。
+// `def` は BANDS 配列の定数参照なので shallow 比較で確実にスキップされる。
+function BandControlColumnImpl({ def }: Props) {
   const { on, setOn, gainDb, setGainDb, freqHz, setFreqHz, q, setQ, slopeDb, setSlopeDb } = useBandState(def.index);
 
   const color = def.color;
@@ -170,3 +174,5 @@ export function BandControlColumn({ def }: Props) {
     </Box>
   );
 }
+
+export const BandControlColumn = memo(BandControlColumnImpl);

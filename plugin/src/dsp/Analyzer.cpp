@@ -116,10 +116,13 @@ bool Analyzer::drainAndCompute(float* outDb) noexcept
             const float db1  = magDbAtBin(b0 + 1);
             const float db   = db0 + frac * (db1 - db0);
 
-            // スムージング（アタック速い、リリース遅い）
+            // スムージング（アタック速い、リリース遅い）。
+            //  呼び出しレート (現行 60Hz) を前提に時定数で合わせた係数。
+            //  30Hz 時の { attack=0.6, release=0.05 } と同じ視覚的な立ち上がり/減衰速度。
+            //  一般式: c = 1 - exp(-1 / (rate * tau))。
             const float prev = smoothedDb_[static_cast<size_t>(i)];
-            const float attack  = 0.6f;
-            const float release = 0.05f;
+            const float attack  = 0.37f;
+            const float release = 0.025f;
             const float coef = (db > prev) ? attack : release;
             const float next = prev + coef * (db - prev);
             smoothedDb_[static_cast<size_t>(i)] = next;
