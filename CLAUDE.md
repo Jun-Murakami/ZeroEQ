@@ -116,7 +116,40 @@
 - AAX SDK は `aax-sdk/` 配下に配置された場合のみ自動的に有効化
 - Windows 配布ビルド: `powershell -File build_windows.ps1 -Configuration Release`
   - 成果物: `releases/<VERSION>/ZeroEQ_<VERSION>_Windows_VST3_AAX_Standalone.zip` と `ZeroEQ_<VERSION>_Windows_Setup.exe`（Inno Setup 6 必須）
-  - AAX 署名は `.env` に PACE 情報がある場合のみ自動実行。`PACE_ORGANIZATION`（= Wrap GUID）は本プラグイン固有。
+  - AAX 署名は `.env` に PACE 情報がある場合のみ自動実行。**`PACE_ORGANIZATION`（= Wrap GUID）は本プラグイン固有**なので、ZeroComp 等の既存 GUID は流用できない。PACE Eden ポータルで "ZeroEQ" 用の製品登録を行って新しい Wrap GUID を発行する必要がある。加えて:
+    - `.pfx` 開発用証明書: `$RootDir\zeroeq-dev.pfx` / `$env:USERPROFILE\.zeroeq\dev.pfx` / `certificates\zeroeq-dev.pfx` のいずれかに配置するか、`PACE_PFX_PATH` 環境変数で明示。
+    - 必須環境変数: `PACE_USERNAME` / `PACE_PASSWORD` / `PACE_ORGANIZATION` / `PACE_KEYPASSWORD`。欠けていると署名はスキップされ unsigned ビルドになる（ビルド自体は成功）。
+    - 署名未構成の段階では `releases/.../ZeroEQ*.aaxplugin` は developer-unsigned のまま同梱される。Pro Tools では unsigned プラグインは DEVELOPER モードでのみロード可能。
+
+#### WASM ビルド（Web デモ用 DSP）
+
+`wasm/src/wasm_exports.cpp` を Emscripten でビルドし、`webui/public-web/wasm/zeroeq_dsp.wasm` に配置して Vite から配信する。
+**plugin/src/dsp/ 内の DSP を純 C++ に移植した `wasm/src/{equalizer,analyzer,momentary_processor,fft}.h` が本体**。JUCE には依存しない。
+
+- 前提: emsdk が `D:/Synching/code/JUCE/emsdk` に checkout 済み。未 activate なら一度だけ以下を実行:
+  ```powershell
+  cd D:\Synching\code\JUCE\emsdk
+  python emsdk.py install latest
+  python emsdk.py activate 5.0.4
+  ```
+- `wasm/build.sh` は Unix bash 用。**Windows では使わない**。
+  加えて Windows のシステム Python が 3.10 未満だと emcc がアサートで落ちるので、emsdk 同梱の Python を PATH 先頭に入れる:
+  ```powershell
+  $env:PATH = 'D:\Synching\code\JUCE\emsdk\python\3.13.3_64bit;' + $env:PATH
+  & 'D:\Synching\code\JUCE\emsdk\emsdk_env.ps1'
+  cd D:\Synching\code\JUCE\ZeroEQ\wasm
+  Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory build | Out-Null
+  cd build
+  emcmake cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
+  cmake --build .
+  # 配信先にコピー
+  Copy-Item -Force dist\zeroeq_dsp.wasm ..\dist\
+  Copy-Item -Force dist\zeroeq_dsp.wasm ..\..\webui\public-web\wasm\
+  ```
+- macOS / Linux は `wasm/build.sh` をそのまま使える（`source /path/to/emsdk_env.sh` 後に `./wasm/build.sh`）。
+- 出力サイズは Release -O3 で ~44KB（11-band EQ + FFT + MomentaryProc 込み）。`STANDALONE_WASM=1` + `ALLOW_MEMORY_GROWTH=1`。エクスポート関数一覧は `wasm/CMakeLists.txt` の `EXPORTED_FUNCTIONS` を参照。
+- **DSP に変更を入れたら必ず WASM も再ビルドして `webui/public-web/wasm/` 配下を更新する**。WASM を更新せず `webui build:web` すると Web デモだけ旧ロジックのままになる。
 
 ### バージョン管理
 
@@ -129,23 +162,38 @@
 ```
 plugin/src/
   PluginProcessor.{h,cpp}     ← APVTS + DSP チェーン
-  PluginEditor.{h,cpp}        ← WebView + relay/attachment
-  ParameterIDs.h              ← 全パラメータ ID
+  PluginEditor.{h,cpp}        ← WebView + relay/attachment + DPI ポーリング + resize
+  ParameterIDs.h              ← 全パラメータ ID（11 バンド × 6 種類 + グローバル）
   KeyEventForwarder.{h,cpp,mm}← ホストへのキー転送
   dsp/
-    Equalizer.{h,cpp}         ← 8-band IIR EQ
-    Analyzer.{h,cpp}          ← Pre/Post スペアナ
+    Equalizer.{h,cpp}         ← 11-band IIR EQ（各段 Butterworth Q 分解）
+    Analyzer.{h,cpp}          ← Pre/Post スペアナ（4096 pt FFT, log-freq 256 bin）
     MomentaryProcessor.{h,cpp}← LKFS 400ms 窓（I/O 両方）
 
+wasm/src/                     ← Web デモ用 JUCE 非依存 DSP
+  wasm_exports.cpp            ← C ABI (band params × 11 + global + spectrum drain)
+  dsp_engine.h                ← オーケストレータ (source / transport / EQ / analyzer / meter)
+  equalizer.h                 ← RBJ biquad + Butterworth Q 分解（plugin 側と挙動一致）
+  analyzer.h                  ← ring + Hann + FFT + log-freq + smoothing
+  momentary_processor.h       ← ITU BS.1770-4 K-weighting（ZeroComp 版と同一）
+  fft.h                       ← 自前 radix-2 Cooley-Tukey（JUCE 非依存）
+
 webui/src/
-  App.tsx                     ← 現在はプレースホルダ（SpectrumView + 数値 I/O）
-  components/                 ← 汎用部品（ParameterFader / HorizontalParameter / メーター / ダイアログ）
-  bridge/                     ← JUCE ⇔ WebView 橋渡し
-  hooks/                      ← useJuceParam など
+  App.tsx                     ← メイン画面（11 バンド列 + SpectrumEditor + OUTPUT フェーダー）
+  components/
+    eq/                       ← EQ 固有（BandControlColumn / SpectrumEditor / InteractiveKnob など）
+    OutputMeterWidget.tsx     ← OUT メーター + dB 目盛り（meterUpdate を自分で購読）
+    ParameterFader.tsx        ← 縦フェーダー（OUTPUT 用）
+  bridge/
+    juce.ts / web/            ← DAW ⇔ WebView / Web デモの両系統
+    web/juce-shim.ts          ← 11 バンド APVTS を WebAudioEngine にルーティング
+    web/WebAudioEngine.ts     ← Web デモ用 AudioWorklet マネージャ
+  hooks/                      ← useJuceParam / useBandParam など
 ```
 
-### 現況（初期スケルトン時点のメモ）
+### 現況
 
-- DSP（Equalizer / Analyzer）は **最小ビルド可能な実装**で入っており、バンドを ON にすれば音に効く。
-- WebUI 側はプレースホルダ実装のみ。バンド UI（drag 可能なノードと curve 描画、スペアナ重ね合わせ）はこれから作る。
-- 将来の課題候補: linear-phase モード / ダイナミック EQ / ミッドサイド / band の動的追加削除（現状は 8 本固定で ON/OFF 切替のみ）。
+- DSP（Equalizer / Analyzer / Momentary）は plugin 側・WASM 側とも完全実装済み、挙動は一致。
+- WebUI は主要機能揃ったプロダクションに近い状態（バンドノード drag、スペアナ Pre/Post ゴースト、60Hz リフレッシュ、ツールチップ、Reset All / Spectrum トグル、リサイズハンドル、DPI 対応）。
+- Web デモ (VITE_RUNTIME=web) も音が鳴る。`npm run build:web` → Vite dev/preview で動作確認可能。
+- 将来の課題候補: linear-phase モード / ダイナミック EQ / ミッドサイド / プリセット管理 / 測定結果のロギング。

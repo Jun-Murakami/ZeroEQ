@@ -131,7 +131,7 @@ export function InteractiveKnob({
       onPointerCancel={endDrag}
       style={{
         display: 'inline-block',
-        cursor: disabled ? 'default' : 'ns-resize',
+        // カーソル変更はしない（ns-resize 等のシェイプがノブ上の数値/境界を隠すため）。
         touchAction: 'none',
       }}
     >

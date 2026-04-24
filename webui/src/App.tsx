@@ -28,6 +28,11 @@ const BAND_GRID_HEIGHT = 200;
 // 右列（メーター / OUT フェーダー）の幅。
 const RIGHT_COL_WIDTH = 80;
 
+// Web デモ版カードの寸法。plugin の最小サイズ (875×450) に合わせ、11 バンド列が
+// 詰まらず並ぶ横幅を確保しつつ、高さは plugin のデフォルトと同じ 450 を採用。
+const WEB_CARD_MAX_WIDTH = 960;
+const WEB_CARD_HEIGHT    = 520;
+
 function App() {
   useHostShortcutForwarding();
   useGlobalZoomGuard();
@@ -158,42 +163,91 @@ function App() {
           caret-color: auto;
         }
       `}</style>
-      {/* 外枠は ZeroComp と同じ. p:2 + pt:0 でヘッダ行と Paper の間に僅差を取る。
-          背景色は theme の background.default に委ねる（Paper との明暗差で段差が出る）。 */}
-      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', p: 2, pt: 0, overflow: 'hidden' }}>
+      {/* 外枠: Web モードでは viewport 中央にカード型で表示、Plugin モードでは全画面。 */}
+      <Box
+        sx={IS_WEB_MODE
+          ? {
+              minHeight: '100vh',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              py: 4,
+              px: 2,
+              gap: 1.5,
+            }
+          : {
+              height: '100vh',
+              display: 'flex',
+              flexDirection: 'column',
+              p: 2,
+              pt: 0,
+              overflow: 'hidden',
+            }
+        }
+      >
+        {/* Web デモ時のみ、カードの外にトランスポートバー（再生 / 停止 / ファイルロード） */}
         {IS_WEB_MODE && (
-          <Box sx={{ width: '100%', maxWidth: 1200 }}>
+          <Box sx={{ width: '100%', maxWidth: WEB_CARD_MAX_WIDTH }}>
             <WebTransportBar />
           </Box>
         )}
 
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, py: 0.5 }}>
-          <Typography
-            variant='body2'
-            sx={{ color: 'primary.main', fontWeight: 600, cursor: 'pointer' }}
-            onClick={() => setLicenseOpen(true)}
-          >
-            ZeroEQ
-          </Typography>
-          <Typography variant='caption' color='text.secondary'>by Jun Murakami</Typography>
-        </Box>
-
-        <Paper
-          elevation={2}
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            display: 'grid',
-            gridTemplateColumns: `1fr ${RIGHT_COL_WIDTH}px`,
-            gridTemplateRows: `1fr ${BAND_GRID_HEIGHT}px`,
-            gap: 1,
-            // ZeroComp と揃えたパディング: pt:2 / px:2 / pb:1 / mb:1
-            pt: 2,
-            px: 2,
-            pb: 1,
-            mb: 1,
-          }}
+        {/* Web: maxWidth / 固定高さ / shadow 付きのカード。Plugin: contents (レイアウト無し)。 */}
+        <Box
+          sx={IS_WEB_MODE
+            ? {
+                width: '100%',
+                maxWidth: WEB_CARD_MAX_WIDTH,
+                height: WEB_CARD_HEIGHT,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                p: 2,
+                pt: 0,
+                borderRadius: 2,
+                boxShadow: 8,
+                backgroundColor: 'background.default',
+              }
+            : { display: 'contents' }
+          }
         >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, py: 0.5 }}>
+            <Typography
+              variant='body2'
+              component='div'
+              sx={{ flexGrow: 1, color: 'primary.main', fontWeight: 600, cursor: 'pointer' }}
+              onClick={() => setLicenseOpen(true)}
+              title='Licenses'
+            >
+              ZeroEQ
+            </Typography>
+            <Typography
+              variant='caption'
+              color='text.secondary'
+              onClick={() => setLicenseOpen(true)}
+              sx={{ cursor: 'pointer' }}
+              title='Licenses'
+            >
+              by Jun Murakami
+            </Typography>
+          </Box>
+
+          <Paper
+            elevation={2}
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: 'grid',
+              gridTemplateColumns: `1fr ${RIGHT_COL_WIDTH}px`,
+              gridTemplateRows: `1fr ${BAND_GRID_HEIGHT}px`,
+              gap: 1,
+              pt: 2,
+              px: 2,
+              pb: 1,
+              mb: 1,
+            }}
+          >
           {/* 上左: スペアナ + エディタ */}
           <Box
             ref={spectrumWrapRef}
@@ -416,13 +470,11 @@ function App() {
               ]}
             />
           </Box>
-        </Paper>
-      </Box>
+          </Paper>
 
-      {/* プラグイン (non-web) 時のみ右下コーナーに擬似リサイズハンドル。
-          WebView overlay として window_action を叩いて本体サイズを追従させる。
-          ZeroComp と同じ実装。 */}
-      {!IS_WEB_MODE && <div
+          {/* プラグイン (non-web) 時のみ右下コーナーに擬似リサイズハンドル。
+              WebView overlay として window_action を叩いて本体サイズを追従させる。ZeroComp と同じ。 */}
+          {!IS_WEB_MODE && <div
         id='resizeHandle'
         onPointerDown={onDragStart}
         onPointerMove={onDrag}
@@ -433,12 +485,34 @@ function App() {
           bottom: 0,
           width: 24,
           height: 24,
-          cursor: 'nwse-resize',
+          // カーソル変更はしない（ドット表示が視覚的アフォーダンスを担う）。
           zIndex: 2147483647,
           backgroundColor: 'transparent',
         }}
-        title='Resize'
-      />}
+            title='Resize'
+          />}
+        </Box>
+
+        {/* Web デモ時のみカード下部に説明文（ZeroComp と同じ流儀）。 */}
+        {IS_WEB_MODE && (
+          <>
+            <Typography
+              variant='caption'
+              color='text.secondary'
+              sx={{ mt: 1, textAlign: 'center', maxWidth: WEB_CARD_MAX_WIDTH, lineHeight: 1.8, px: 2 }}
+            >
+              ZeroEQ — zero-latency 11-band EQ with integrated spectrum analyzer.
+            </Typography>
+            <Typography
+              variant='caption'
+              color='text.secondary'
+              sx={{ textAlign: 'center', maxWidth: WEB_CARD_MAX_WIDTH, lineHeight: 1, px: 2 }}
+            >
+              ゼロレイテンシーのスペアナ内蔵 11 バンド EQ です。
+            </Typography>
+          </>
+        )}
+      </Box>
 
       <LicenseDialog open={licenseOpen} onClose={() => setLicenseOpen(false)} />
       <GlobalDialog />

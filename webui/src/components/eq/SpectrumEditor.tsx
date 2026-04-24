@@ -607,7 +607,7 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const cursor = activeIdx !== null ? 'grabbing' : hoveredIdx !== null ? 'grab' : 'default';
+  // カーソル変更はあえて行わない（hover/drag の手のひらアイコンがノードや数値を隠すため）。
 
   // ---- ツールチップ（hover / drag 中のノードに対して gain / freq / q を表示）----
   //  Portal で document.body に逃がし position: fixed で表示。
@@ -664,7 +664,7 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
 
   return (
     <div style={{ position: 'relative', display: 'block', width, height }}>
-      <canvas ref={canvasRef} style={{ display: 'block', borderRadius: 4, cursor, touchAction: 'none' }} />
+      <canvas ref={canvasRef} style={{ display: 'block', borderRadius: 4, touchAction: 'none' }} />
       {tooltip}
     </div>
   );

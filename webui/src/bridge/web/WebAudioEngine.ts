@@ -41,6 +41,36 @@ export class WebAudioEngine
   private startPromise: Promise<void> | null = null;
   private initResolvers: Array<() => void> = [];
 
+  // ready になる前に set-band / set-param 等の message が来たらキューしておき、
+  // wasm-ready を受信してから flush する。こうしないと shim の import 時に
+  // 送られる初期 state が WASM に届かず、バンドが全部 OFF のままになる。
+  private workletReady = false;
+  private pendingMessages: Array<{ msg: Record<string, unknown>; transfer?: Transferable[] }> = [];
+
+  private sendOrQueue(msg: Record<string, unknown>, transfer?: Transferable[]): void
+  {
+    if (this.workletReady && this.workletNode)
+    {
+      if (transfer) this.workletNode.port.postMessage(msg, transfer);
+      else           this.workletNode.port.postMessage(msg);
+    }
+    else
+    {
+      this.pendingMessages.push({ msg, transfer });
+    }
+  }
+
+  private flushPending(): void
+  {
+    const queued = this.pendingMessages;
+    this.pendingMessages = [];
+    for (const q of queued)
+    {
+      if (q.transfer) this.workletNode?.port.postMessage(q.msg, q.transfer);
+      else             this.workletNode?.port.postMessage(q.msg);
+    }
+  }
+
   startFromUserGesture(): Promise<void>
   {
     if (this.startPromise) return this.startPromise;
@@ -127,6 +157,8 @@ export class WebAudioEngine
     switch (msg.type)
     {
       case 'wasm-ready':
+        this.workletReady = true;
+        this.flushPending();
         this.initResolvers.forEach((r) => r());
         this.initResolvers = [];
         this.setLoop(this.loopEnabled);
@@ -233,7 +265,7 @@ export class WebAudioEngine
     const rightCopy = new Float32Array(
       audioBuf.numberOfChannels >= 2 ? audioBuf.getChannelData(1) : audioBuf.getChannelData(0),
     );
-    this.workletNode?.port.postMessage({
+    this.sendOrQueue({
       type: 'load-source',
       left:  leftCopy.buffer,
       right: rightCopy.buffer,
@@ -255,14 +287,14 @@ export class WebAudioEngine
   async play(): Promise<void>
   {
     await this.ensureAudioContext();
-    this.workletNode?.port.postMessage({ type: 'set-playing', value: true });
+    this.sendOrQueue({ type: 'set-playing', value: true });
     this.isPlayingState = true;
     this.emit('transportUpdate', { isPlaying: true, position: this.position, duration: this.duration, loopEnabled: this.loopEnabled });
   }
 
   pause(): void
   {
-    this.workletNode?.port.postMessage({ type: 'set-playing', value: false });
+    this.sendOrQueue({ type: 'set-playing', value: false });
     this.isPlayingState = false;
     this.emit('transportUpdate', { isPlaying: false, position: this.position, duration: this.duration, loopEnabled: this.loopEnabled });
   }
@@ -272,32 +304,32 @@ export class WebAudioEngine
     if (this.duration <= 0) return;
     const norm = Math.max(0, Math.min(1, positionSec / this.duration));
     this.position = positionSec;
-    this.workletNode?.port.postMessage({ type: 'seek-normalised', value: norm });
+    this.sendOrQueue({ type: 'seek-normalised', value: norm });
   }
 
   setLoop(enabled: boolean): void
   {
     this.loopEnabled = enabled;
-    this.workletNode?.port.postMessage({ type: 'set-loop', value: enabled });
+    this.sendOrQueue({ type: 'set-loop', value: enabled });
     this.emit('transportUpdate', { isPlaying: this.isPlayingState, position: this.position, duration: this.duration, loopEnabled: enabled });
   }
 
   // ====== パラメータ → WASM 直送 ======
 
   // 11 バンド固有
-  setBandOn    (idx: number, on: boolean) : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'on',    value: on    }); }
-  setBandType  (idx: number, t: number)   : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'type',  value: t     }); }
-  setBandFreq  (idx: number, hz: number)  : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'freq',  value: hz    }); }
-  setBandGain  (idx: number, db: number)  : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'gain',  value: db    }); }
-  setBandQ     (idx: number, q: number)   : void { this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'q',     value: q     }); }
-  setBandSlope (idx: number, slope: number): void{ this.workletNode?.port.postMessage({ type: 'set-band', index: idx, field: 'slope', value: slope }); }
+  setBandOn    (idx: number, on: boolean) : void { this.sendOrQueue({ type: 'set-band', index: idx, field: 'on',    value: on    }); }
+  setBandType  (idx: number, t: number)   : void { this.sendOrQueue({ type: 'set-band', index: idx, field: 'type',  value: t     }); }
+  setBandFreq  (idx: number, hz: number)  : void { this.sendOrQueue({ type: 'set-band', index: idx, field: 'freq',  value: hz    }); }
+  setBandGain  (idx: number, db: number)  : void { this.sendOrQueue({ type: 'set-band', index: idx, field: 'gain',  value: db    }); }
+  setBandQ     (idx: number, q: number)   : void { this.sendOrQueue({ type: 'set-band', index: idx, field: 'q',     value: q     }); }
+  setBandSlope (idx: number, slope: number): void{ this.sendOrQueue({ type: 'set-band', index: idx, field: 'slope', value: slope }); }
 
   // グローバル
-  setBypass       (b: boolean) : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'bypass',         value: b }); }
-  setOutputGainDb (db: number) : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'output_gain_db', value: db }); }
-  setAnalyzerMode (m: number)  : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'analyzer_mode',  value: m }); }
-  setMeteringMode (m: number)  : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'metering_mode',  value: m }); }
-  resetMomentary  ()           : void { this.workletNode?.port.postMessage({ type: 'set-param', param: 'reset_momentary', value: true }); }
+  setBypass       (b: boolean) : void { this.sendOrQueue({ type: 'set-param', param: 'bypass',         value: b }); }
+  setOutputGainDb (db: number) : void { this.sendOrQueue({ type: 'set-param', param: 'output_gain_db', value: db }); }
+  setAnalyzerMode (m: number)  : void { this.sendOrQueue({ type: 'set-param', param: 'analyzer_mode',  value: m }); }
+  setMeteringMode (m: number)  : void { this.sendOrQueue({ type: 'set-param', param: 'metering_mode',  value: m }); }
+  resetMomentary  ()           : void { this.sendOrQueue({ type: 'set-param', param: 'reset_momentary', value: true }); }
 
   // ====== 状態取得 ======
 
