@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEventHandler } from 'react';
 import { Fragment } from 'react';
-import { Box, Button, Divider, Paper, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Box, Button, Divider, Paper, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery } from '@mui/material';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { juceBridge } from './bridge/juce';
 import { darkTheme } from './theme';
@@ -9,7 +9,7 @@ import { useGlobalZoomGuard } from './hooks/useGlobalZoomGuard';
 import { GlobalDialog } from './components/GlobalDialog';
 import LicenseDialog from './components/LicenseDialog';
 import { WebTransportBar } from './components/WebTransportBar';
-import { WebDemoMenu } from './components/WebDemoMenu';
+import { WebDemoMenu, MENU_WIDE_QUERY, MENU_DRAWER_WIDTH } from './components/WebDemoMenu';
 import { ParameterFader } from './components/ParameterFader';
 import { OutputMeterWidget } from './components/OutputMeterWidget';
 import { SpectrumEditor } from './components/eq/SpectrumEditor';
@@ -93,6 +93,11 @@ function App() {
   const spectrumOn = analyzerMode !== 0;
   const toggleSpectrum = () => setAnalyzerMode(spectrumOn ? 0 : 3);
 
+  // Web モードで viewport が広いときは右側に常時表示の drawer を置くので、
+  // その幅ぶん外枠の右パディングを広げて中央寄せが drawer に被らないようにする。
+  const wideDrawerDocked = useMediaQuery(MENU_WIDE_QUERY) && IS_WEB_MODE;
+  const drawerDockedSpace = wideDrawerDocked ? `${MENU_DRAWER_WIDTH}px` : 2;
+
   // オールリセット: 全 11 バンドを BANDS 定義のデフォルトに戻す（on/off も含む）。
   const resetAllBands = () => {
     allBandStates.forEach((s, i) => {
@@ -163,7 +168,8 @@ function App() {
           caret-color: auto;
         }
       `}</style>
-      {/* 外枠: Web モードでは viewport 中央にカード型で表示、Plugin モードでは全画面。 */}
+      {/* 外枠: Web モードでは viewport 中央にカード型で表示、Plugin モードでは全画面。
+          1200px 以上のときは右に常時表示ドロワーを置くため、右側に drawer 幅ぶん padding を確保。 */}
       <Box
         sx={IS_WEB_MODE
           ? {
@@ -173,7 +179,8 @@ function App() {
               alignItems: 'center',
               justifyContent: 'center',
               py: 4,
-              px: 2,
+              pl: 2,
+              pr: drawerDockedSpace,
               gap: 1.5,
             }
           : {
