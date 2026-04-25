@@ -13,8 +13,9 @@ class ZeroEQAudioProcessorEditor : public juce::AudioProcessorEditor,
                                    private juce::Timer
 {
 public:
-    static constexpr int kMinWidth  = 875;
-    static constexpr int kMinHeight = 450;
+    // コンパクトモード + 下部パネル折りたたみで最小限の表示を維持できる下限。
+    static constexpr int kMinWidth  = 640;
+    static constexpr int kMinHeight = 380;
     static constexpr int kMaxWidth  = 2560;
     static constexpr int kMaxHeight = 1440;
 
@@ -39,10 +40,12 @@ private:
     juce::WebToggleButtonRelay webBypassRelay;
     juce::WebSliderRelay       webOutputGainRelay;
     juce::WebComboBoxRelay     webAnalyzerModeRelay;
+    juce::WebToggleButtonRelay webBottomPanelOpenRelay;
 
     juce::WebToggleButtonParameterAttachment bypassAttachment;
     juce::WebSliderParameterAttachment       outputGainAttachment;
     juce::WebComboBoxParameterAttachment     analyzerModeAttachment;
+    juce::WebToggleButtonParameterAttachment bottomPanelOpenAttachment;
 
     // ---- バンド relay / attachment（8 band × 5 param 固定） ----
     //  参照寿命: webView より前にすべて構築しておく必要があるため、宣言順で手前に置く。

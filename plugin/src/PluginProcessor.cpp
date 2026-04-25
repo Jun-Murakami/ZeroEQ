@@ -82,6 +82,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZeroEQAudioProcessor::create
         ze::id::ANALYZER_MODE, "Analyzer",
         juce::StringArray{ "Off", "Pre", "Post", "Pre+Post" }, 3)); // Pre+Post: EQ 前後のゴースト比較表示
 
+    // UI 状態用 bool。DAW のオートメーション対象に出さないよう meta=true / automatable=false を指定。
+    // APVTS の state ValueTree に含まれるためセッションの保存/復元で永続化される。
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        ze::id::BOTTOM_PANEL_OPEN, "Bottom Panel Open", true,
+        juce::AudioParameterBoolAttributes().withMeta(true).withAutomatable(false)));
+
     // バンド（11 本固定配置。デフォルト type / freq / Q は ze::id::defaultFor(i) に集約）
     const juce::StringArray bandTypeNames{ "Bell", "LowShelf", "HighShelf", "HighPass", "LowPass", "Notch" };
 

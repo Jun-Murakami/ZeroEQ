@@ -70,6 +70,8 @@ function registerDefaults(): void
   toggleStates.set('BYPASS', new WebToggleState(false));
   sliderStates.set('OUTPUT_GAIN', makeLinearSlider(0.0, -24, 24));
   comboBoxStates.set('ANALYZER_MODE', new WebComboBoxState(3, 4)); // Off / Pre / Post / Pre+Post (default Pre+Post)
+  // UI 永続化用 (DAW 側では meta=true / 非 automatable な APVTS bool)。Web デモではただの toggle state。
+  toggleStates.set('BOTTOM_PANEL_OPEN', new WebToggleState(true));
 
   // --- 11 バンドぶんの state 登録 ---
   for (let i = 0; i < BAND_DEFAULTS.length; i++)

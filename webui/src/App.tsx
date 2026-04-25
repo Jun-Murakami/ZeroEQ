@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type PointerEventHandler } from 'react';
 import { Fragment } from 'react';
-import { Box, Button, Divider, Paper, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery } from '@mui/material';
+import { Box, Button, Divider, IconButton, Paper, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { juceBridge } from './bridge/juce';
 import { darkTheme } from './theme';
@@ -16,7 +18,7 @@ import { SpectrumEditor } from './components/eq/SpectrumEditor';
 import { BandControlColumn } from './components/eq/BandControlColumn';
 import { BANDS } from './components/eq/BandDefs';
 import { useAllBandStates } from './hooks/useBandParam';
-import { useJuceComboBoxIndex } from './hooks/useJuceParam';
+import { useJuceComboBoxIndex, useJuceToggleValue } from './hooks/useJuceParam';
 import './App.css';
 
 const IS_WEB_MODE = import.meta.env.VITE_RUNTIME === 'web';
@@ -26,7 +28,10 @@ const IS_WEB_MODE = import.meta.env.VITE_RUNTIME === 'web';
 //  はみ出しを避けつつ余白を抑える目安。
 const BAND_GRID_HEIGHT = 200;
 // 右列（メーター / OUT フェーダー）の幅。
+//  通常: メーター単独
+//  折りたたみ時: 左に OUT フェーダー / 右にメーター を並べる
 const RIGHT_COL_WIDTH = 80;
+const RIGHT_COL_WIDTH_COLLAPSED = 130;
 
 // Web デモ版カードの寸法。plugin の最小サイズ (875×450) に合わせ、11 バンド列が
 // 詰まらず並ぶ横幅を確保しつつ、高さは plugin のデフォルトと同じ 450 を採用。
@@ -98,6 +103,19 @@ function App() {
   const wideDrawerDocked = useMediaQuery(MENU_WIDE_QUERY) && IS_WEB_MODE;
   const drawerDockedSpace = wideDrawerDocked ? `${MENU_DRAWER_WIDTH}px` : 2;
 
+  // 下部セクション（バンドコントロール群 + OUT フェーダー）の開閉。
+  //  閉じている時は OUT フェーダーが右上 (メーター widget) の左隣に並び、
+  //  下部行は高さ 0 まで畳まれる。状態切替ボタンはメーター widget の右下にオーバーレイ。
+  // APVTS の BOTTOM_PANEL_OPEN (meta=true / 非 automatable な bool) にバインドしてセッション間で永続化。
+  const { value: bottomPanelOpen, setValue: setBottomPanelOpen } = useJuceToggleValue('BOTTOM_PANEL_OPEN', true);
+
+  // 横幅が一定値を下回ったときは「コンパクトモード」に切り替える。
+  //   - 各バンドのノブ下入力欄に付いている dB / Hz サフィックスを非表示
+  //   - バンド列のカラム幅を KNOB_SIZE (34) に詰めて、列間の gap を 0 にし
+  //     ディバイダー同士がくっつくまで横方向に縮められるようにする
+  // Web モード（カードが固定 960px 上限）では適用しない。
+  const isCompact = useMediaQuery('(max-width:874px)') && !IS_WEB_MODE;
+
   // オールリセット: 全 11 バンドを BANDS 定義のデフォルトに戻す（on/off も含む）。
   const resetAllBands = () => {
     allBandStates.forEach((s, i) => {
@@ -123,8 +141,9 @@ function App() {
     if (!dragState.current) return;
     const dx = e.clientX - dragState.current.startX;
     const dy = e.clientY - dragState.current.startY;
-    const w = Math.max(875, dragState.current.startW + dx);
-    const h = Math.max(450, dragState.current.startH + dy);
+    // 下限はプラグイン本体側 (kMinWidth/kMinHeight) と一致させる。
+    const w = Math.max(640, dragState.current.startW + dx);
+    const h = Math.max(380, dragState.current.startH + dy);
     if (!window.__resizeRAF) {
       window.__resizeRAF = requestAnimationFrame(() => {
         window.__resizeRAF = 0;
@@ -196,6 +215,21 @@ function App() {
         {/* Web デモ時のみ、カードの外にトランスポートバー（再生 / 停止 / ファイルロード） */}
         {IS_WEB_MODE && (
           <Box sx={{ width: '100%', maxWidth: WEB_CARD_MAX_WIDTH }}>
+            <Typography
+              variant='caption'
+              sx={{
+                display: 'block',
+                px: 1.5,
+                color: 'text.secondary',
+                fontWeight: 600,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                fontSize: '0.65rem',
+                mb: 0.25,
+              }}
+            >
+              Input
+            </Typography>
             <WebTransportBar />
           </Box>
         )}
@@ -246,8 +280,12 @@ function App() {
               flex: 1,
               minHeight: 0,
               display: 'grid',
-              gridTemplateColumns: `1fr ${RIGHT_COL_WIDTH}px`,
-              gridTemplateRows: `1fr ${BAND_GRID_HEIGHT}px`,
+              // 折りたたみ時は右列に OUT フェーダー + メーターを並べるため幅を拡張、
+              // 下部行は高さ 0 へ。
+              // gap は列方向だけ意味があるので常時 1 (8px)。スペアナと右列の間に視認できる
+              // 隙間を残しておくことで、折りたたみ時もフェーダーが張り付いて見えない。
+              gridTemplateColumns: `1fr ${bottomPanelOpen ? RIGHT_COL_WIDTH : RIGHT_COL_WIDTH_COLLAPSED}px`,
+              gridTemplateRows: `1fr ${bottomPanelOpen ? BAND_GRID_HEIGHT : 0}px`,
               gap: 1,
               pt: 2,
               px: 2,
@@ -369,22 +407,82 @@ function App() {
             </Box>
           </Box>
 
-          {/* 上右: OUT L / R メーター + dB スケール（widget が内部で meterUpdate を購読） */}
+          {/* 上右: OUT L / R メーター + dB スケール（widget が内部で meterUpdate を購読）。
+              折りたたみ時は左隣に OUT フェーダーを並べる。
+              メーターの右下にオーバーレイで開閉トグルボタン。 */}
           <Box
             sx={{
               gridColumn: '2 / 3',
               gridRow: '1 / 2',
               display: 'flex',
-              justifyContent: 'center',
+              flexDirection: 'row',
+              justifyContent: 'flex-end',
               alignItems: 'flex-start',
+              gap: 1,
               minHeight: 0,
+              position: 'relative',
             }}
           >
+            {!bottomPanelOpen && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                <ParameterFader
+                  parameterId='OUTPUT_GAIN'
+                  label='OUTPUT'
+                  min={-24}
+                  max={24}
+                  defaultValue={0}
+                  // フェーダー全体高さがメーターと揃うように slider 部を逆算
+                  // (label 20 + slider + mb 4 + mt 2 + input ~20 ≈ slider + 46)
+                  sliderHeight={Math.max(40, spectrumSize.height - 46)}
+                  wheelStep={1}
+                  wheelStepFine={0.1}
+                  scaleMarks={[
+                    { value: 24, label: '+24' },
+                    { value: 12, label: '+12' },
+                    { value: 0, label: '0' },
+                    { value: -12, label: '-12' },
+                    { value: -24, label: '-24' },
+                  ]}
+                />
+              </Box>
+            )}
             <OutputMeterWidget height={spectrumSize.height} />
+            {/* 開閉トグル: メーター widget の右下、dB スケール「-24」のさらに下の余白に。 */}
+            <Tooltip
+              arrow
+              title={bottomPanelOpen ? 'Collapse bottom panel' : 'Expand bottom panel'}
+            >
+              <IconButton
+                onClick={() => setBottomPanelOpen(!bottomPanelOpen)}
+                size='small'
+                sx={{
+                  position: 'absolute',
+                  right: 0,
+                  bottom: 0,
+                  width: 18,
+                  height: 18,
+                  padding: 0,
+                  borderRadius: 0.5,
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  color: 'rgba(255,255,255,0.55)',
+                  backgroundColor: 'rgba(255,255,255,0.02)',
+                  '&:hover': {
+                    color: '#fff',
+                    borderColor: 'rgba(79,195,247,0.55)',
+                    backgroundColor: 'rgba(79,195,247,0.18)',
+                  },
+                }}
+              >
+                {bottomPanelOpen
+                  ? <KeyboardArrowDownIcon sx={{ fontSize: 16 }} />
+                  : <KeyboardArrowUpIcon   sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
           </Box>
 
-          {/* 下左: バンドコントロール群（space-between で可変ギャップ） */}
-          <Box
+          {/* 下左: バンドコントロール群（space-between で可変ギャップ）。
+              折りたたみ時は丸ごと非表示。 */}
+          {bottomPanelOpen && (<Box
             sx={{
               gridColumn: '1 / 2',
               gridRow: '2 / 3',
@@ -435,21 +533,22 @@ function App() {
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: 'space-between',
-                gap: 1,
+                gap: isCompact ? 0 : 1,
               }}
             >
               <Divider orientation='vertical' flexItem sx={{ borderLeft: '1px solid rgba(255,255,255,0.22)', alignSelf: 'stretch' }} />
               {BANDS.map((b) => (
                 <Fragment key={b.index}>
-                  <BandControlColumn def={b} />
+                  <BandControlColumn def={b} compact={isCompact} />
                   <Divider orientation='vertical' flexItem sx={{ borderLeft: '1px solid rgba(255,255,255,0.22)', alignSelf: 'stretch' }} />
                 </Fragment>
               ))}
             </Box>
-          </Box>
+          </Box>)}
 
-          {/* 下右: OUT フェーダー（ZeroComp と同じ ParameterFader） */}
-          <Box
+          {/* 下右: OUT フェーダー（ZeroComp と同じ ParameterFader）。
+              折りたたみ時はメーター widget の左隣に移したのでこのセルは描画しない。 */}
+          {bottomPanelOpen && (<Box
             sx={{
               gridColumn: '2 / 3',
               gridRow: '2 / 3',
@@ -476,7 +575,7 @@ function App() {
                 { value: -24, label: '-24' },
               ]}
             />
-          </Box>
+          </Box>)}
           </Paper>
 
           {/* プラグイン (non-web) 時のみ右下コーナーに擬似リサイズハンドル。

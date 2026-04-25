@@ -202,12 +202,14 @@ makeBandAttachments(juce::AudioProcessorValueTreeState& apvts,
 ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
     : AudioProcessorEditor(&p),
       audioProcessor(p),
-      webBypassRelay        { ze::id::BYPASS.getParamID() },
-      webOutputGainRelay    { ze::id::OUTPUT_GAIN.getParamID() },
-      webAnalyzerModeRelay  { ze::id::ANALYZER_MODE.getParamID() },
-      bypassAttachment      { *p.getState().getParameter(ze::id::BYPASS.getParamID()),        webBypassRelay,       nullptr },
-      outputGainAttachment  { *p.getState().getParameter(ze::id::OUTPUT_GAIN.getParamID()),   webOutputGainRelay,   nullptr },
-      analyzerModeAttachment{ *p.getState().getParameter(ze::id::ANALYZER_MODE.getParamID()), webAnalyzerModeRelay, nullptr },
+      webBypassRelay           { ze::id::BYPASS.getParamID() },
+      webOutputGainRelay       { ze::id::OUTPUT_GAIN.getParamID() },
+      webAnalyzerModeRelay     { ze::id::ANALYZER_MODE.getParamID() },
+      webBottomPanelOpenRelay  { ze::id::BOTTOM_PANEL_OPEN.getParamID() },
+      bypassAttachment         { *p.getState().getParameter(ze::id::BYPASS.getParamID()),            webBypassRelay,          nullptr },
+      outputGainAttachment     { *p.getState().getParameter(ze::id::OUTPUT_GAIN.getParamID()),       webOutputGainRelay,      nullptr },
+      analyzerModeAttachment   { *p.getState().getParameter(ze::id::ANALYZER_MODE.getParamID()),     webAnalyzerModeRelay,    nullptr },
+      bottomPanelOpenAttachment{ *p.getState().getParameter(ze::id::BOTTOM_PANEL_OPEN.getParamID()), webBottomPanelOpenRelay, nullptr },
       bandOnRelays          { makeBandRelays<juce::WebToggleButtonRelay>(&ze::id::bandOnID)    },
       bandTypeRelays        { makeBandRelays<juce::WebComboBoxRelay>    (&ze::id::bandTypeID)  },
       bandFreqRelays        { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandFreqID)  },
@@ -237,7 +239,8 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
                   .withOptionsFrom(controlParameterIndexReceiver)
                   .withOptionsFrom(webBypassRelay)
                   .withOptionsFrom(webOutputGainRelay)
-                  .withOptionsFrom(webAnalyzerModeRelay);
+                  .withOptionsFrom(webAnalyzerModeRelay)
+                  .withOptionsFrom(webBottomPanelOpenRelay);
 
               for (auto& r : bandOnRelays)    opts = opts.withOptionsFrom(*r);
               for (auto& r : bandTypeRelays)  opts = opts.withOptionsFrom(*r);

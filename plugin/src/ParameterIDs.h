@@ -30,9 +30,11 @@ namespace ze::id {
 static constexpr int kNumBands = 11;
 
 // グローバル
-const juce::ParameterID BYPASS       { "BYPASS",        1 };
-const juce::ParameterID OUTPUT_GAIN  { "OUTPUT_GAIN",   1 };
-const juce::ParameterID ANALYZER_MODE{ "ANALYZER_MODE", 1 };
+const juce::ParameterID BYPASS            { "BYPASS",            1 };
+const juce::ParameterID OUTPUT_GAIN       { "OUTPUT_GAIN",       1 };
+const juce::ParameterID ANALYZER_MODE     { "ANALYZER_MODE",     1 };
+// UI 状態（下部セクションパネルの開閉）。非オートメーション / meta 扱いで APVTS に保持。
+const juce::ParameterID BOTTOM_PANEL_OPEN { "BOTTOM_PANEL_OPEN", 1 };
 
 // バンド ID（文字列を動的に組み立てる。APVTS は StringRef ベースなので問題なし）
 inline juce::String bandOnID    (int i) { return "BAND" + juce::String(i) + "_ON";    }
