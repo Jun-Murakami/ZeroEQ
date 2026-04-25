@@ -103,11 +103,17 @@ function App() {
   const wideDrawerDocked = useMediaQuery(MENU_WIDE_QUERY) && IS_WEB_MODE;
   const drawerDockedSpace = wideDrawerDocked ? `${MENU_DRAWER_WIDTH}px` : 2;
 
+  // スマホサイズの Web デモでは下部のバンドコントロール行を強制的に折りたたむ。
+  // 11 列分の knob を縦並びに収める余地が無いので spectrum + メーターだけにする。
+  const isMobileWeb = useMediaQuery('(max-width:600px)') && IS_WEB_MODE;
+
   // 下部セクション（バンドコントロール群 + OUT フェーダー）の開閉。
   //  閉じている時は OUT フェーダーが右上 (メーター widget) の左隣に並び、
   //  下部行は高さ 0 まで畳まれる。状態切替ボタンはメーター widget の右下にオーバーレイ。
   // APVTS の BOTTOM_PANEL_OPEN (meta=true / 非 automatable な bool) にバインドしてセッション間で永続化。
-  const { value: bottomPanelOpen, setValue: setBottomPanelOpen } = useJuceToggleValue('BOTTOM_PANEL_OPEN', true);
+  const { value: bottomPanelOpenRaw, setValue: setBottomPanelOpen } = useJuceToggleValue('BOTTOM_PANEL_OPEN', true);
+  // mobile Web では強制的に折りたたむ。APVTS の値は変えない（戻したときにユーザの設定が残る）。
+  const bottomPanelOpen = bottomPanelOpenRaw && !isMobileWeb;
 
   // 横幅が一定値を下回ったときは「コンパクトモード」に切り替える。
   //   - 各バンドのノブ下入力欄に付いている dB / Hz サフィックスを非表示
@@ -447,37 +453,40 @@ function App() {
               </Box>
             )}
             <OutputMeterWidget height={spectrumSize.height} />
-            {/* 開閉トグル: メーター widget の右下、dB スケール「-24」のさらに下の余白に。 */}
-            <Tooltip
-              arrow
-              title={bottomPanelOpen ? 'Collapse bottom panel' : 'Expand bottom panel'}
-            >
-              <IconButton
-                onClick={() => setBottomPanelOpen(!bottomPanelOpen)}
-                size='small'
-                sx={{
-                  position: 'absolute',
-                  right: 0,
-                  bottom: 0,
-                  width: 18,
-                  height: 18,
-                  padding: 0,
-                  borderRadius: 0.5,
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  color: 'rgba(255,255,255,0.55)',
-                  backgroundColor: 'rgba(255,255,255,0.02)',
-                  '&:hover': {
-                    color: '#fff',
-                    borderColor: 'rgba(79,195,247,0.55)',
-                    backgroundColor: 'rgba(79,195,247,0.18)',
-                  },
-                }}
+            {/* 開閉トグル: メーター widget の右下、dB スケール「-24」のさらに下の余白に。
+                mobile Web では強制折りたたみのためトグル自体を隠す。 */}
+            {!isMobileWeb && (
+              <Tooltip
+                arrow
+                title={bottomPanelOpen ? 'Collapse bottom panel' : 'Expand bottom panel'}
               >
-                {bottomPanelOpen
-                  ? <KeyboardArrowDownIcon sx={{ fontSize: 16 }} />
-                  : <KeyboardArrowUpIcon   sx={{ fontSize: 16 }} />}
-              </IconButton>
-            </Tooltip>
+                <IconButton
+                  onClick={() => setBottomPanelOpen(!bottomPanelOpen)}
+                  size='small'
+                  sx={{
+                    position: 'absolute',
+                    right: 0,
+                    bottom: 0,
+                    width: 18,
+                    height: 18,
+                    padding: 0,
+                    borderRadius: 0.5,
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    color: 'rgba(255,255,255,0.55)',
+                    backgroundColor: 'rgba(255,255,255,0.02)',
+                    '&:hover': {
+                      color: '#fff',
+                      borderColor: 'rgba(79,195,247,0.55)',
+                      backgroundColor: 'rgba(79,195,247,0.18)',
+                    },
+                  }}
+                >
+                  {bottomPanelOpen
+                    ? <KeyboardArrowDownIcon sx={{ fontSize: 16 }} />
+                    : <KeyboardArrowUpIcon   sx={{ fontSize: 16 }} />}
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
 
           {/* 下左: バンドコントロール群（space-between で可変ギャップ）。
