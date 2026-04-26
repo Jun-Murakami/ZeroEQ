@@ -32,6 +32,12 @@ if(APPLE)
     set_property(GLOBAL PROPERTY JUCE_AAX_COPY_DIR "${CMAKE_BINARY_DIR}/AAX_Plugins")
 endif()
 
+# Linux ビルド時のみ LV2 を FORMATS に追加（既存の Windows/macOS リリース経路には影響させない）
+set(ZEROEQ_FORMATS AU VST3 Standalone AAX)
+if(UNIX AND NOT APPLE)
+    list(APPEND ZEROEQ_FORMATS LV2)
+endif()
+
 # プラグイン定義（JUCE v8）
 juce_add_plugin(ZeroEQ
     VERSION ${PROJECT_VERSION}
@@ -40,7 +46,8 @@ juce_add_plugin(ZeroEQ
     BUNDLE_ID "com.junmurakami.zeroeq"
     PLUGIN_MANUFACTURER_CODE Jmbc
     PLUGIN_CODE ZrEq
-    FORMATS AU VST3 Standalone AAX
+    FORMATS ${ZEROEQ_FORMATS}
+    LV2URI "https://junmurakami.com/plugins/zeroeq"
     PLUGIN_AU_MAIN_TYPE "aufx"
     VST3_CATEGORIES "Fx" "EQ"
     AAX_CATEGORY "AAX_ePlugInCategory_EQ"
@@ -58,6 +65,13 @@ juce_add_plugin(ZeroEQ
 )
 
 juce_generate_juce_header(ZeroEQ)
+
+# Linux ビルド時のみ CLAP ターゲットを生成（clap-juce-extensions 経由）
+if(UNIX AND NOT APPLE)
+    clap_juce_extensions_plugin(TARGET ZeroEQ
+        CLAP_ID "com.junmurakami.zeroeq"
+        CLAP_FEATURES audio-effect equalizer)
+endif()
 
 # ソースファイル
 target_sources(ZeroEQ PRIVATE

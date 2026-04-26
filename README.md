@@ -1,6 +1,6 @@
 # ZeroEQ
 
-A **zero-latency**, spectrum-analyzer-integrated parametric equalizer for broadcast, streaming, live, and mastering work. 11 fixed-slot bands of minimum-phase IIR (2× HPF + Low Shelf + 6× Bell + High Shelf + LPF), with per-band drag, overlaid on a Pre / Post FFT analyzer. Built with JUCE + WebView (Vite / React 19 / MUI 7). Ships as VST3 / AU / AAX / Standalone, plus a WebAssembly browser demo that reuses the exact same DSP.
+A **zero-latency**, spectrum-analyzer-integrated parametric equalizer for broadcast, streaming, live, and mastering work. 11 fixed-slot bands of minimum-phase IIR (2× HPF + Low Shelf + 6× Bell + High Shelf + LPF), with per-band drag, overlaid on a Pre / Post FFT analyzer. Built with JUCE + WebView (Vite / React 19 / MUI 7). Ships as **VST3 / AU / AAX / Standalone** on Windows / macOS and **VST3 / LV2 / CLAP / Standalone** on Linux, plus a WebAssembly browser demo that reuses the exact same DSP.
 
 You can find the demo site running on WebAssembly here.
 https://zeroeq-demo.web.app/
@@ -52,8 +52,10 @@ Linear-phase / natural-phase / dynamic-EQ / mid-side modes are on the roadmap; c
 - C++17 toolchain
   - Windows: Visual Studio 2022 with the C++ workload
   - macOS: Xcode 14+
+  - Linux: gcc 13+ / clang + the apt packages listed under [Building on Linux](#building-on-linux)
 - Node.js 18+ and npm (for the WebUI)
 - JUCE (included as a submodule)
+- `clap-juce-extensions` (also a git submodule, used only for the Linux CLAP target)
 - Optional: AAX SDK for Pro Tools builds (drop at `aax-sdk/`)
 - Optional: Inno Setup 6 for the Windows installer
 - Optional: [Emscripten](https://emscripten.org) for the WebAssembly demo
@@ -76,7 +78,36 @@ powershell -ExecutionPolicy Bypass -File build_windows.ps1 -Configuration Releas
 
 # 4. Build (macOS)
 ./build_macos.zsh
+
+# 5. Build (Linux — see "Building on Linux" below)
+bash build_linux.sh
 ```
+
+### Building on Linux
+
+Tested on **WSL2 Ubuntu 24.04**, but should work on any modern glibc-based distro with `webkit2gtk-4.1` available.
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential pkg-config cmake ninja-build git \
+  libasound2-dev libjack-jackd2-dev libcurl4-openssl-dev \
+  libfreetype-dev libfontconfig1-dev \
+  libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+  libxinerama-dev libxrandr-dev libxrender-dev \
+  libwebkit2gtk-4.1-dev libglu1-mesa-dev mesa-common-dev libgtk-3-dev
+
+git submodule update --init --recursive   # JUCE + clap-juce-extensions
+bash build_linux.sh                        # Release VST3 / LV2 / CLAP / Standalone + zip
+```
+
+Output:
+
+- Build artefacts: `build-linux/plugin/ZeroEQ_artefacts/Release/{VST3,LV2,CLAP,Standalone}/`
+- Auto-installed: `~/.vst3/ZeroEQ.vst3`, `~/.lv2/ZeroEQ.lv2`, `~/.clap/ZeroEQ.clap`
+- Distribution zip: `releases/<VERSION>/ZeroEQ_<VERSION>_Linux_VST3_LV2_CLAP_Standalone.zip`
+
+LV2 and CLAP are gated behind `if(UNIX AND NOT APPLE)` in CMake, so existing Windows / macOS release flows are unaffected. AU and AAX are skipped on Linux as expected.
 
 ### Manual CMake build (for development)
 

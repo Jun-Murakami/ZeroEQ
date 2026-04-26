@@ -7,7 +7,7 @@
 ### 目的とスコープ
 
 - **目的**: 最小位相 IIR による純ゼロレイテンシーのマルチバンド EQ。スペアナ統合 + インタラクティブなバンド操作を備え、放送／配信／ライブ／マスタリングいずれの用途にも汎用に使える。
-- **対象フォーマット**: VST3 / AU / AAX / Standalone
+- **対象フォーマット**: VST3 / AU / AAX / Standalone（Windows / macOS）+ VST3 / LV2 / CLAP / Standalone（Linux）
 - **主要機能**:
   - 8 バンドの IIR EQ（Bell / LowShelf / HighShelf / HighPass / LowPass / Notch）
   - 各バンド: ON / TYPE / FREQ（20..20kHz log）/ GAIN（±24 dB）/ Q（0.1..18 log）
@@ -120,6 +120,13 @@
     - `.pfx` 開発用証明書: `$RootDir\zeroeq-dev.pfx` / `$env:USERPROFILE\.zeroeq\dev.pfx` / `certificates\zeroeq-dev.pfx` のいずれかに配置するか、`PACE_PFX_PATH` 環境変数で明示。
     - 必須環境変数: `PACE_USERNAME` / `PACE_PASSWORD` / `PACE_ORGANIZATION` / `PACE_KEYPASSWORD`。欠けていると署名はスキップされ unsigned ビルドになる（ビルド自体は成功）。
     - 署名未構成の段階では `releases/.../ZeroEQ*.aaxplugin` は developer-unsigned のまま同梱される。Pro Tools では unsigned プラグインは DEVELOPER モードでのみロード可能。
+- Linux 配布ビルド: `bash build_linux.sh`（WSL2 Ubuntu 24.04 で動作確認）
+  - 成果物: `releases/<VERSION>/ZeroEQ_<VERSION>_Linux_VST3_LV2_CLAP_Standalone.zip`。VST3 / LV2 / CLAP / Standalone を同梱
+  - 自動インストール先: `~/.vst3/ZeroEQ.vst3`, `~/.lv2/ZeroEQ.lv2`, `~/.clap/ZeroEQ.clap`（VST3 / LV2 は JUCE の `COPY_PLUGIN_AFTER_BUILD`、CLAP は `build_linux.sh` 側で明示コピー）
+  - LV2 / CLAP は **Linux ビルドでのみ** 有効化（`if(UNIX AND NOT APPLE)` で条件分岐）。Windows / macOS の既存リリース経路には影響させない
+  - LV2URI: `https://junmurakami.com/plugins/zeroeq`（`plugin/CMakeLists.txt` の `juce_add_plugin` 内）。LV2 規約上 stable な URI 必須なのでバージョンを跨いで変更しない
+  - CLAP: `clap-juce-extensions` を submodule として取り込み、`clap_juce_extensions_plugin(... CLAP_ID "com.junmurakami.zeroeq" CLAP_FEATURES audio-effect equalizer)` を呼ぶ
+  - 必要 apt パッケージ: `build-essential pkg-config cmake ninja-build git libasound2-dev libjack-jackd2-dev libcurl4-openssl-dev libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev mesa-common-dev libgtk-3-dev`
 
 #### WASM ビルド（Web デモ用 DSP）
 
