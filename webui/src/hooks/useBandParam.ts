@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 import { useJuceSliderValue, useJuceToggleValue, useJuceComboBoxIndex } from './useJuceParam';
 import { usePreviewBool, usePreviewNumber } from './previewParamStore';
 import { BANDS, SLOPE_VALUES_DB, slopeIdxToDb, slopeDbToIdx, type SlopeDbPerOct } from '../components/eq/BandDefs';

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 import { useEffect, useRef, useState, type PointerEventHandler } from 'react';
 import { Fragment } from 'react';
 import { Box, Button, Divider, IconButton, Paper, ToggleButton, ToggleButtonGroup, Tooltip, Typography, useMediaQuery } from '@mui/material';

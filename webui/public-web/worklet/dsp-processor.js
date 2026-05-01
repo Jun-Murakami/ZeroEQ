@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 /**
  * ZeroEQ WASM AudioWorkletProcessor.
  * すべてのオーディオ処理（再生・EQ・アナライザ・メーター）は C++ WASM に委譲。

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 // 軽量 radix-2 Cooley-Tukey FFT。Analyzer 用に 2^n サイズの complex FFT を in-place で行う。
 //  実部・虚部を交互に [re0, im0, re1, im1, ...] で持つ layout。
 //  JUCE の juce::dsp::FFT::performRealOnlyForwardTransform と同じ出力レイアウトに合わせる:

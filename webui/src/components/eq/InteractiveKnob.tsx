@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 import { useEffect, useRef } from 'react';
 import { Knob } from './Knob';
 

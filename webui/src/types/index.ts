@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 // ZeroEQ: ゼロレイテンシー EQ 用の型定義
 
 // I/O メーターレベル（dBFS / LKFS）。EQ ではモード切替せず Peak/RMS/Momentary を同時に送る。

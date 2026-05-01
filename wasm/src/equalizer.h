@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 // ZeroEQ Equalizer の JUCE 非依存版。
 //  plugin/src/dsp/Equalizer.{h,cpp} を純 C++ に移植。ビヘイビアは同一（11 バンド、
 //  HP/LP の Butterworth Q 分解、全バンド OFF 時のビット同一パス含む）。

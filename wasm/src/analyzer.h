@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 // ZeroEQ Analyzer の JUCE 非依存版。plugin/src/dsp/Analyzer.{h,cpp} を移植。
 //   ring buffer (downmixed mono) → Hann 窓 + FFT (radix-2) → 線形ビン間補間
 //   → log-freq kNumDisplayBins リサンプル → attack/release スムージング。

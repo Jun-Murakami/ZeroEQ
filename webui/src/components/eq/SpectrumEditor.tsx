@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { BANDS, SLOPE_VALUES_DB, slopeDbToIdx, slopeIdxToDb, type SlopeDbPerOct } from './BandDefs';

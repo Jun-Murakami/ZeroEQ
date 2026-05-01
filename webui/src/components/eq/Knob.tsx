@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 // 円形ノブ（MUI CircularProgress 風、8時→4時の 240°スイープ）。
 //  - determinate 固定。value は 0..1 で 240° の扇を塗る。
 //  - 色はプロパティで切替可能（バンドごとの色に合わせる）。

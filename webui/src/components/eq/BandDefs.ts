@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Jun Murakami
 // 11 バンド固定配置。左→右 = 低→高周波で視覚的に並べる。
 //   [HPF, HPF, LowShelf, Bell×6, HighShelf, LPF]
 //
