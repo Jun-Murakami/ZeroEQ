@@ -11,6 +11,7 @@ import {
   formatQ, parseQ,
 } from './InlineNumberInput';
 import { useBandState } from '../../hooks/useBandParam';
+import { setHoveredBandFromKnob } from '../../hooks/hoveredBandStore';
 
 // 1 バンドの縦カラム。
 //  上から順に:
@@ -50,8 +51,19 @@ function BandControlColumnImpl({ def, compact = false }: Props) {
   const gainSuffix  = compact ? undefined : 'dB';
   const freqSuffix  = compact ? undefined : 'Hz';
 
+  // 列にホバーすると SpectrumEditor 側の対応ノードを 1.5x 拡大表示する。
+  //  - 列のどこに pointer が乗っても発火（Gain/Freq/Q のどれを操作しに来ても OK）
+  //  - knob ドラッグ中（pointer capture 中）は leave がブロックされるので、
+  //    アクティブ時もドットの拡大状態が維持される（意図通り）
+  const onPointerEnter = () => setHoveredBandFromKnob(def.index);
+  const onPointerLeave = () => setHoveredBandFromKnob(null);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: columnWidth, gap: 1 }}>
+    <Box
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: columnWidth, gap: 1 }}
+    >
       {/* on/off スイッチ */}
       <IconButton
         onClick={handleToggle}
@@ -85,6 +97,7 @@ function BandControlColumnImpl({ def, compact = false }: Props) {
           skew='linear'
           onChange={setGainDb}
           onReset={() => setGainDb(0)}
+          fineStep={0.1}
           size={KNOB_SIZE}
           color={color}
         />

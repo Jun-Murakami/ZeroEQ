@@ -6,6 +6,7 @@ import { formatHz, formatGain, formatQ } from './InlineNumberInput';
 import { juceBridge } from '../../bridge/juce';
 import type { SpectrumUpdateData } from '../../types';
 import { useJuceComboBoxIndex } from '../../hooks/useJuceParam';
+import { useHoveredBandFromKnob } from '../../hooks/hoveredBandStore';
 
 // ============================================================================
 // スペアナ + EQ エディタ
@@ -135,6 +136,9 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  // BandControlColumn 側 (knob 列の hover) からの強調指示。
+  //  キャンバス上の hover とは独立で、両方が立つこともある。描画では highlight 扱いに統一する。
+  const knobHoveredIdx = useHoveredBandFromKnob();
 
   // 最新値を保持する ref（mount-once useEffect 内のイベントハンドラから参照するため）
   const bandsRef = useRef(bands);
@@ -402,6 +406,10 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
     // バンドノード
     //  OFF 時でも色を維持し、透明度だけ落とす（色でバンド識別しやすいように）。
     //  active / hover はリングを太くして強調。
+    //  knob 列 hover 時は 1.5x に拡大して、操作対象が一目で判るようにする
+    //  （キャンバス内 hover と独立して立つので OR で highlight 扱い）。
+    const BASE_RADIUS = 7;
+    const KNOB_HOVER_RADIUS = 9; // ~1.3x。1.5x は主張が強すぎたので一段控えめに。
     for (let i = 0; i < BANDS.length; i++) {
       const def = BANDS[i];
       const s = bands[i];
@@ -411,13 +419,16 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
       const y = eqDbToY(nodeDb, height);
       const isActive = i === activeIdx;
       const isHover = i === hoveredIdx;
-      const radius = isActive ? 9 : isHover ? 8 : 7;
+      const isKnobHover = i === knobHoveredIdx;
+      // active > knob-hover > canvas-hover > 通常 の優先で半径を決める。
+      //  knob-hover が canvas-hover より大きいのは、列ホバーでバンドを特定する用途を強調するため。
+      const radius = isActive ? 9 : isKnobHover ? KNOB_HOVER_RADIUS : isHover ? 8 : BASE_RADIUS;
 
       ctx.save();
       ctx.globalAlpha = s.on ? 1.0 : 0.4;
 
       // ホバー / ドラッグ中のハロ
-      if (isActive || isHover) {
+      if (isActive || isHover || isKnobHover) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
         ctx.fillStyle = def.color + '44';
@@ -437,7 +448,7 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
 
       ctx.restore();
     }
-  }, [width, height, preBins, postBins, bands, sampleRate, freqAxis, activeIdx, hoveredIdx, eqDbMax, showPre, showPost]);
+  }, [width, height, preBins, postBins, bands, sampleRate, freqAxis, activeIdx, hoveredIdx, knobHoveredIdx, eqDbMax, showPre, showPost]);
 
   // ---- ポインタ / ホイールのインタラクション ----
   useEffect(() => {

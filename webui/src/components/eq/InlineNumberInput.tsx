@@ -57,9 +57,14 @@ export function InlineNumberInput({
     }
   };
 
+  // .block-host-shortcuts は useHostShortcutForwarding 側で「DAW に転送しない要素」
+  // としてマーカーに使っている。これが無いと数値入力中のキーがプラグインを素通りして
+  // DAW のショートカットに食われる（ParameterFader / HorizontalParameter と揃える）。
+  const mergedClassName = className ? `block-host-shortcuts ${className}` : 'block-host-shortcuts';
+
   const inputEl = (
     <input
-      className={className}
+      className={mergedClassName}
       type='text'
       inputMode='decimal'
       value={buffer}
@@ -135,10 +140,7 @@ export function InlineNumberInput({
 // ----------------------------------------------------------------------------
 // パーサ / フォーマッタ（Hz / Gain / Q 用）
 // ----------------------------------------------------------------------------
-export const formatHz = (hz: number): string => {
-  if (hz >= 1000) return `${(hz / 1000).toFixed(hz >= 10000 ? 0 : 1)}k`;
-  return `${Math.round(hz)}`;
-};
+export const formatHz = (hz: number): string => `${Math.round(hz)}`;
 export const parseHz = (s: string): number | null => {
   const m = s.trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(k)?\s*(hz)?$/);
   if (!m) return null;
