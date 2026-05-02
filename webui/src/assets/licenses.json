@@ -871,7 +871,7 @@
     "path": "/Users/jun/SourceCode/JUCE/ZeroEQ/webui/node_modules/cosmiconfig/node_modules/yaml",
     "licenseFile": "/Users/jun/SourceCode/JUCE/ZeroEQ/webui/node_modules/cosmiconfig/node_modules/yaml/LICENSE"
   },
-  "zeroeq-webui@1.0.2": {
+  "zeroeq-webui@1.0.3": {
     "licenses": "UNLICENSED",
     "private": true,
     "path": "/Users/jun/SourceCode/JUCE/ZeroEQ/webui"
