@@ -13,6 +13,7 @@ namespace ze::id {
 //   - BYPASS:          bool
 //   - OUTPUT_GAIN:     -24..+24 dB
 //   - ANALYZER_MODE:   choice  0=Off / 1=Pre / 2=Post / 3=Pre+Post
+//   - EQ_DB_RANGE:     choice  0=±3 / 1=±6 / 2=±12 / 3=±24 / 4=±32 dB（UI 表示状態）
 //
 // バンド（11 本、固定タイプ配置）:
 //   インデックス → タイプ:
@@ -37,6 +38,16 @@ const juce::ParameterID OUTPUT_GAIN       { "OUTPUT_GAIN",       1 };
 const juce::ParameterID ANALYZER_MODE     { "ANALYZER_MODE",     1 };
 // UI 状態（下部セクションパネルの開閉）。非オートメーション / meta 扱いで APVTS に保持。
 const juce::ParameterID BOTTOM_PANEL_OPEN { "BOTTOM_PANEL_OPEN", 1 };
+// UI 状態（EQ エディタ縦軸の ±dB レンジ）。choice だが非オートメーション / meta 扱いで APVTS に保持。
+const juce::ParameterID EQ_DB_RANGE       { "EQ_DB_RANGE",       1 };
+
+// EQ_DB_RANGE choice index → ±dB 値。WebUI 側 App.tsx の EQ_DB_RANGE_VALUES と揃える。
+inline int eqDbRangeIdxToValue(int idx) noexcept
+{
+    constexpr int kTable[] = { 3, 6, 12, 24, 32 };
+    if (idx < 0 || idx >= 5) return 12;
+    return kTable[idx];
+}
 
 // バンド ID（文字列を動的に組み立てる。APVTS は StringRef ベースなので問題なし）
 inline juce::String bandOnID    (int i) { return "BAND" + juce::String(i) + "_ON";    }

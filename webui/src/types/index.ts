@@ -48,7 +48,6 @@ declare global {
     getToggleState?: (name: string) => unknown;
     getComboBoxState?: (name: string) => unknown;
     getBackendResourceAddress?: (path: string) => string;
-    __resizeRAF?: number;
   }
 }
 

@@ -43,11 +43,13 @@ private:
     juce::WebSliderRelay       webOutputGainRelay;
     juce::WebComboBoxRelay     webAnalyzerModeRelay;
     juce::WebToggleButtonRelay webBottomPanelOpenRelay;
+    juce::WebComboBoxRelay     webEqDbRangeRelay;
 
     juce::WebToggleButtonParameterAttachment bypassAttachment;
     juce::WebSliderParameterAttachment       outputGainAttachment;
     juce::WebComboBoxParameterAttachment     analyzerModeAttachment;
     juce::WebToggleButtonParameterAttachment bottomPanelOpenAttachment;
+    juce::WebComboBoxParameterAttachment     eqDbRangeAttachment;
 
     // ---- バンド relay / attachment（8 band × 5 param 固定） ----
     //  参照寿命: webView より前にすべて構築しておく必要があるため、宣言順で手前に置く。
@@ -84,6 +86,13 @@ private:
     juce::ComponentBoundsConstrainer resizerConstraints;
 
     std::atomic<bool> isShuttingDown{ false };
+
+    // WebView 内のリサイズハンドルからの resizeTo を最後に処理した時刻（ms）。
+    //  直近 kResizeQuietMs 以内は 60Hz の meter/spectrum 送出をスキップし、
+    //  メッセージスレッド／JS スレッドをリサイズのラウンドトリップに明け渡す。
+    //  （window_action ハンドラと timerCallback は共にメッセージスレッドで動くので atomic 不要。）
+    juce::uint32 lastHandleResizeMs = 0;
+    static constexpr juce::uint32 kResizeQuietMs = 160;
 
     // アナライザ描画用 scratch（UI スレッドのみ使用）
     std::array<float, ze::dsp::Analyzer::kNumDisplayBins> preSpectrumScratch{};

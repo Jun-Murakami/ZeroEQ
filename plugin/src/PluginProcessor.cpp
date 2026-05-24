@@ -90,6 +90,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZeroEQAudioProcessor::create
         ze::id::BOTTOM_PANEL_OPEN, "Bottom Panel Open", true,
         juce::AudioParameterBoolAttributes().withMeta(true).withAutomatable(false)));
 
+    // EQ エディタ縦軸の ±dB レンジ。DSP には関与しない純粋な表示状態だが、
+    // BOTTOM_PANEL_OPEN 同様 meta=true / 非 automatable な choice として APVTS に保持し永続化する。
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        ze::id::EQ_DB_RANGE, "EQ dB Range",
+        juce::StringArray{ "+/-3 dB", "+/-6 dB", "+/-12 dB", "+/-24 dB", "+/-32 dB" }, 2, // 既定 ±12
+        juce::AudioParameterChoiceAttributes().withMeta(true).withAutomatable(false)));
+
     // バンド（11 本固定配置。デフォルト type / freq / Q は ze::id::defaultFor(i) に集約）
     const juce::StringArray bandTypeNames{ "Bell", "LowShelf", "HighShelf", "HighPass", "LowPass", "Notch" };
 

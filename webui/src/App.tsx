@@ -40,6 +40,11 @@ const RIGHT_COL_WIDTH_COLLAPSED = 130;
 const WEB_CARD_MAX_WIDTH = 960;
 const WEB_CARD_HEIGHT    = 650;
 
+// EQ エディタ縦軸の ±dB レンジ選択肢。choice index ↔ dB 値の対応。
+//  APVTS の EQ_DB_RANGE（plugin / juce-shim 双方）と必ず同じ並びにすること。
+const EQ_DB_RANGE_VALUES = [3, 6, 12, 24, 32] as const;
+const EQ_DB_RANGE_DEFAULT_IDX = 2; // ±12
+
 function App() {
   useHostShortcutForwarding();
   useGlobalZoomGuard();
@@ -92,7 +97,13 @@ function App() {
   const faderHeight = BAND_GRID_HEIGHT - 50;
 
   // EQ 縦軸の dB レンジ切替。スペアナ内左上にコンパクトなトグル。
-  const [eqDbMax, setEqDbMax] = useState<number>(12);
+  //  APVTS の EQ_DB_RANGE（meta=true / 非 automatable な choice）にバインドし、
+  //  プラグインを閉じて再表示してもセッション状態として復元されるようにする。
+  const { index: eqDbRangeIdxRaw, setIndex: setEqDbRangeIdx } = useJuceComboBoxIndex('EQ_DB_RANGE');
+  const eqDbRangeIdx = eqDbRangeIdxRaw >= 0 && eqDbRangeIdxRaw < EQ_DB_RANGE_VALUES.length
+    ? eqDbRangeIdxRaw
+    : EQ_DB_RANGE_DEFAULT_IDX;
+  const eqDbMax = EQ_DB_RANGE_VALUES[eqDbRangeIdx];
 
   // スペアナ表示モード: 0=Off / 1=Pre / 2=Post / 3=Pre+Post（既定 3）。
   //  右上のトグルボタンで 0 ⇔ 3 を切替。off にすると backend が spectrumUpdate を emit しない。
@@ -138,29 +149,65 @@ function App() {
 
   // リサイズハンドル用 drag 状態。
   //  onDragStart で現在サイズを記録 → onDrag で差分算出 → juceBridge 経由で
-  //  window_action('resizeTo', w, h) を発行。requestAnimationFrame で間引きして
-  //  連続イベントで resize を乱発しないようにする（ZeroComp 参考）。
-  const dragState = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
+  //  window_action('resizeTo', w, h) を host に送る。
+  //
+  //  バックプレッシャ方式（重要）:
+  //   host への resize は「往復」処理（callNative の Promise は VST3 の onSize 完了で解決）。
+  //   rAF で 60Hz 送りっぱなしにすると、host の往復が 1 フレームより遅い場合に要求が
+  //   キューに積み上がり、ウィンドウがカーソルからどんどん遅れていく（= 蓄積するタイムラグ）。
+  //   そこで「往復中は次を送らず、完了時に“最新の保留サイズ”だけを送る」方式にする。
+  //   こうすると host が捌ける最大レートで常に最新サイズだけが届き、積み上がりが起きない。
+  //   （OS 枠リサイズはこの往復を介さずネイティブ処理なので元々滑らか。）
+  const dragState      = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
+  const pendingResize  = useRef<{ w: number; h: number } | null>(null);
+  const lastSentSize   = useRef<{ w: number; h: number } | null>(null);
+  const resizeInFlight = useRef(false);
+
+  const pumpResize = () => {
+    if (resizeInFlight.current) return;          // 往復中。完了時にこの関数が再投入される
+    const s = pendingResize.current;
+    if (!s) return;
+    const last = lastSentSize.current;
+    if (last && last.w === s.w && last.h === s.h) { pendingResize.current = null; return; } // 同一サイズは送らない
+    pendingResize.current = null;
+    lastSentSize.current = s;
+    resizeInFlight.current = true;
+
+    // 完了応答が万一来なくてもフリーズしないよう、200ms で強制的に次へ進める安全策。
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resizeInFlight.current = false;
+      pumpResize();                              // 往復完了 → 最新の保留があれば次を送る
+    };
+    const safety = window.setTimeout(done, 200);
+    void juceBridge.callNative('window_action', 'resizeTo', s.w, s.h).then(() => {
+      window.clearTimeout(safety);
+      done();
+    });
+  };
+
   const onDragStart: PointerEventHandler<HTMLDivElement> = (e) => {
     dragState.current = { startX: e.clientX, startY: e.clientY, startW: window.innerWidth, startH: window.innerHeight };
+    lastSentSize.current = { w: window.innerWidth, h: window.innerHeight };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onDrag: PointerEventHandler<HTMLDivElement> = (e) => {
     if (!dragState.current) return;
     const dx = e.clientX - dragState.current.startX;
     const dy = e.clientY - dragState.current.startY;
-    // 下限はプラグイン本体側 (kMinWidth/kMinHeight) と一致させる。
-    const w = Math.max(640, dragState.current.startW + dx);
-    const h = Math.max(380, dragState.current.startH + dy);
-    if (!window.__resizeRAF) {
-      window.__resizeRAF = requestAnimationFrame(() => {
-        window.__resizeRAF = 0;
-        juceBridge.callNative('window_action', 'resizeTo', w, h);
-      });
-    }
+    // 下限はプラグイン本体側 (kMinWidth/kMinHeight) と一致させる。整数化して重複判定を効かせる。
+    const w = Math.round(Math.max(640, dragState.current.startW + dx));
+    const h = Math.round(Math.max(380, dragState.current.startH + dy));
+    pendingResize.current = { w, h };            // 常に最新の目標サイズを上書き保持
+    pumpResize();                                // 往復中でなければ即送信、そうでなければ完了時に送る
   };
-  const onDragEnd: PointerEventHandler<HTMLDivElement> = () => {
+  const onDragEnd: PointerEventHandler<HTMLDivElement> = (e) => {
     dragState.current = null;
+    pumpResize();                                // 最終サイズが保留にあれば確実に届ける（pump 連鎖で吸収）
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId))
+      e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
   return (
@@ -335,7 +382,11 @@ function App() {
                 value={eqDbMax}
                 exclusive
                 size='small'
-                onChange={(_, v) => { if (v !== null) setEqDbMax(v); }}
+                onChange={(_, v) => {
+                  if (v === null) return;
+                  const i = EQ_DB_RANGE_VALUES.indexOf(v);
+                  if (i >= 0) setEqDbRangeIdx(i);
+                }}
                 sx={{
                   '& .MuiToggleButton-root': {
                     padding: '2px 7px',
@@ -352,7 +403,7 @@ function App() {
                   },
                 }}
               >
-                {[3, 6, 12, 24, 32].map((v) => (
+                {EQ_DB_RANGE_VALUES.map((v) => (
                   <ToggleButton key={v} value={v}>±{v}</ToggleButton>
                 ))}
               </ToggleButtonGroup>
@@ -592,21 +643,20 @@ function App() {
           {/* プラグイン (non-web) 時のみ右下コーナーに擬似リサイズハンドル。
               WebView overlay として window_action を叩いて本体サイズを追従させる。ZeroComp と同じ。 */}
           {!IS_WEB_MODE && <div
-        id='resizeHandle'
-        onPointerDown={onDragStart}
-        onPointerMove={onDrag}
-        onPointerUp={onDragEnd}
-        style={{
-          position: 'fixed',
-          right: 0,
-          bottom: 0,
-          width: 24,
-          height: 24,
-          // カーソル変更はしない（ドット表示が視覚的アフォーダンスを担う）。
-          zIndex: 2147483647,
-          backgroundColor: 'transparent',
-        }}
-            title='Resize'
+            id='resizeHandle'
+            onPointerDown={onDragStart}
+            onPointerMove={onDrag}
+            onPointerUp={onDragEnd}
+            style={{
+              position: 'fixed',
+              right: 0,
+              bottom: 0,
+              width: 24,
+              height: 24,
+              // カーソル変更はしない（ドット表示が視覚的アフォーダンスを担う）。
+              zIndex: 2147483647,
+              backgroundColor: 'transparent',
+            }}
           />}
         </Box>
 

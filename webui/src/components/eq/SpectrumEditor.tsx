@@ -170,6 +170,38 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
     return arr;
   }, []);
 
+  // ---- EQ カーブの dB 配列（band パラメータ + sampleRate のみに依存）----
+  //  各 ON バンドの単体応答 + 合成カーブは 512 点 × バンド数ぶんの超越関数計算で重い。
+  //  これらの dB 値は width/height/eqDbMax（= ピクセル写像）には依存しないので、
+  //  リサイズのたびに再計算しないよう band 値のシグネチャでメモ化する。
+  //  bands は毎レンダ別参照になるため、参照ではなく値（bandSig）をキーにするのが要点。
+  //  （グリップリサイズが OS 枠リサイズより重かった主因がこの毎フレーム再計算だった。）
+  const bandSig = bands
+    .map((s, i) => `${s.on ? 1 : 0}:${BANDS[i].type}:${s.freqHz}:${s.gainDb}:${s.q}:${s.slopeDb}`)
+    .join('|');
+  const curveStates = useMemo<BandCurveState[]>(
+    () =>
+      bands.map((s, i) => ({
+        on: s.on,
+        type: BANDS[i].type,
+        freqHz: s.freqHz,
+        gainDb: s.gainDb,
+        q: s.q,
+        slopeDbPerOct: s.slopeDb,
+      })),
+    // bandSig が同一なら band 値は不変。bands 配列の参照変化では再計算しない。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bandSig],
+  );
+  const singleBandCurves = useMemo(
+    () => curveStates.map((st) => (st.on ? sampleSingleBandDb(st, freqAxis, sampleRate) : null)),
+    [curveStates, freqAxis, sampleRate],
+  );
+  const fullCurveDb = useMemo(
+    () => sampleCurveDb(curveStates, freqAxis, sampleRate),
+    [curveStates, freqAxis, sampleRate],
+  );
+
   // ---- 描画 ----
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -318,15 +350,8 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
     if (showPost && postBins) drawSpectrumFill(postBins);
     if (showPost && postBins) drawSpectrumOutline(postBins);
 
-    // 合成 EQ カーブの計算元になる curveStates
-    const curveStates: BandCurveState[] = bands.map((s, i) => ({
-      on: s.on,
-      type: BANDS[i].type,
-      freqHz: s.freqHz,
-      gainDb: s.gainDb,
-      q: s.q,
-      slopeDbPerOct: s.slopeDb,
-    }));
+    // curveStates / 各カーブはメモ化済み（band 値が変わらない限り再計算されない）。
+    // ここではプロット（ピクセル写像 + 描画）だけを行う。
 
     // 各 ON バンドの寄与を薄いカラーフィル + 少し濃い境界線で描画。
     //  HP/LP は cut 側（フィルター外側）に、Bell/Shelf/Notch は peak/dip 周辺に自然に乗る。
@@ -356,7 +381,8 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
       const st = curveStates[i];
       if (!st || !st.on) continue;
 
-      const single = sampleSingleBandDb(st, freqAxis, sampleRate);
+      const single = singleBandCurves[i];
+      if (!single) continue;
 
       // 塗り: 0 dB 基準線とカーブで閉じた全域領域。可視域外は eqDbToY でクランプされ
       // 下端に張り付く形で塗られるが、塗り色は半透明の色付きなので「フィルターが効いている
@@ -389,7 +415,7 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
 
     // 合成 EQ カーブ（白線）
     //  可視域を下回る点は描画を打ち切り、底に張り付く線を残さない。
-    const curveDb = sampleCurveDb(curveStates, freqAxis, sampleRate);
+    const curveDb = fullCurveDb;
     ctx.strokeStyle = 'rgba(255,255,255,0.92)';
     ctx.lineWidth = 1.6;
     ctx.beginPath();
@@ -450,7 +476,7 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
 
       ctx.restore();
     }
-  }, [width, height, preBins, postBins, bands, sampleRate, freqAxis, activeIdx, hoveredIdx, knobHoveredIdx, eqDbMax, showPre, showPost]);
+  }, [width, height, preBins, postBins, bands, curveStates, singleBandCurves, fullCurveDb, sampleRate, freqAxis, activeIdx, hoveredIdx, knobHoveredIdx, eqDbMax, showPre, showPost]);
 
   // ---- ポインタ / ホイールのインタラクション ----
   useEffect(() => {

@@ -208,10 +208,12 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
       webOutputGainRelay       { ze::id::OUTPUT_GAIN.getParamID() },
       webAnalyzerModeRelay     { ze::id::ANALYZER_MODE.getParamID() },
       webBottomPanelOpenRelay  { ze::id::BOTTOM_PANEL_OPEN.getParamID() },
+      webEqDbRangeRelay        { ze::id::EQ_DB_RANGE.getParamID() },
       bypassAttachment         { *p.getState().getParameter(ze::id::BYPASS.getParamID()),            webBypassRelay,          nullptr },
       outputGainAttachment     { *p.getState().getParameter(ze::id::OUTPUT_GAIN.getParamID()),       webOutputGainRelay,      nullptr },
       analyzerModeAttachment   { *p.getState().getParameter(ze::id::ANALYZER_MODE.getParamID()),     webAnalyzerModeRelay,    nullptr },
       bottomPanelOpenAttachment{ *p.getState().getParameter(ze::id::BOTTOM_PANEL_OPEN.getParamID()), webBottomPanelOpenRelay, nullptr },
+      eqDbRangeAttachment      { *p.getState().getParameter(ze::id::EQ_DB_RANGE.getParamID()),       webEqDbRangeRelay,       nullptr },
       bandOnRelays          { makeBandRelays<juce::WebToggleButtonRelay>(&ze::id::bandOnID)    },
       bandTypeRelays        { makeBandRelays<juce::WebComboBoxRelay>    (&ze::id::bandTypeID)  },
       bandFreqRelays        { makeBandRelays<juce::WebSliderRelay>      (&ze::id::bandFreqID)  },
@@ -242,7 +244,8 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
                   .withOptionsFrom(webBypassRelay)
                   .withOptionsFrom(webOutputGainRelay)
                   .withOptionsFrom(webAnalyzerModeRelay)
-                  .withOptionsFrom(webBottomPanelOpenRelay);
+                  .withOptionsFrom(webBottomPanelOpenRelay)
+                  .withOptionsFrom(webEqDbRangeRelay);
 
               for (auto& r : bandOnRelays)    opts = opts.withOptionsFrom(*r);
               for (auto& r : bandTypeRelays)  opts = opts.withOptionsFrom(*r);
@@ -269,6 +272,7 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
                               const auto action = args[0].toString();
                               if (action == "resizeTo" && args.size() >= 3)
                               {
+                                  lastHandleResizeMs = juce::Time::getMillisecondCounter();
                                   setSize(clampW(juce::roundToInt((double) args[1])),
                                           clampH(juce::roundToInt((double) args[2])));
                                   completion(juce::var{ true });
@@ -276,6 +280,7 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
                               }
                               if (action == "resizeBy" && args.size() >= 3)
                               {
+                                  lastHandleResizeMs = juce::Time::getMillisecondCounter();
                                   const int dw = juce::roundToInt((double) args[1]);
                                   const int dh = juce::roundToInt((double) args[2]);
                                   setSize(clampW(getWidth() + dw), clampH(getHeight() + dh));
@@ -444,6 +449,15 @@ void ZeroEQAudioProcessorEditor::timerCallback()
 {
     if (isShuttingDown.load(std::memory_order_acquire)) return;
     if (! webViewLifetimeGuard.isConstructed()) return;
+
+    // ハンドルリサイズ中（直近に resizeTo を受けた）は、meter/spectrum の
+    // ネイティブ→JS 送出を一時停止する。これらは毎フレーム JSON シリアライズ +
+    // evaluateJavascript でメッセージスレッドと WebView の JS スレッド双方を占有するため、
+    // 送り続けると JS→ネイティブの resize メッセージがキューで待たされ、ウィンドウ追従が
+    // カクつく（OS のウィンドウ枠リサイズはこのキューを介さないので元々滑らか）。
+    // 静止して kResizeQuietMs 経過すれば自動的に再開する。
+    if (juce::Time::getMillisecondCounter() - lastHandleResizeMs < kResizeQuietMs)
+        return;
 
    #if defined(JUCE_WINDOWS)
     pollAndMaybeNotifyDpiChange();
