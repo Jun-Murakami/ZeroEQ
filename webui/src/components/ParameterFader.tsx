@@ -166,8 +166,12 @@ export const ParameterFader: React.FC<ParameterFaderProps> = ({
   const [inputText, setInputText] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
 
+  // wheel ハンドラから最新値を参照するための Latest Ref。
+  //  ref 書き込みは render 中ではなく effect で行う（concurrent 安全）。
   const valueRef = useRef<number>(value);
-  valueRef.current = value;
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   // log スキュー時でも frontend-mirror は線形解釈で scaled 値を送る仕様。
   //  そのため setNormalised(log正規化値) では JUCE 側の値がズレる。

@@ -69,6 +69,10 @@ function App() {
   useEffect(() => {
     juceBridge.whenReady(() => {
       juceBridge.callNative('system_action', 'ready');
+      // 初期サイズを「設計 CSS px × ratio」に確定（MixCompare 方式）。レイアウト確定後の値を使うため次フレームで送る。
+      requestAnimationFrame(() => {
+        juceBridge.callNative('window_action', 'apply_layout', window.innerWidth, window.innerHeight);
+      });
     });
   }, []);
 
@@ -162,6 +166,8 @@ function App() {
   const pendingResize  = useRef<{ w: number; h: number } | null>(null);
   const lastSentSize   = useRef<{ w: number; h: number } | null>(null);
   const resizeInFlight = useRef(false);
+  // resizeBegin（CSS→論理 px 比率確定）の完了 Promise。最初の resizeTo はこれの解決を待つ（MixCompare 方式）。
+  const beginReady = useRef<Promise<unknown> | null>(null);
 
   const pumpResize = () => {
     if (resizeInFlight.current) return;          // 往復中。完了時にこの関数が再投入される
@@ -182,24 +188,33 @@ function App() {
       pumpResize();                              // 往復完了 → 最新の保留があれば次を送る
     };
     const safety = window.setTimeout(done, 200);
-    void juceBridge.callNative('window_action', 'resizeTo', s.w, s.h).then(() => {
-      window.clearTimeout(safety);
-      done();
-    });
+    // resizeBegin（比率確定）の完了を待ってから resizeTo を送る（比率確定前のジャンプ競合を防ぐ）。
+    const begin = beginReady.current ?? Promise.resolve();
+    void begin
+      .then(() => juceBridge.callNative('window_action', 'resizeTo', s.w, s.h))
+      .then(() => {
+        window.clearTimeout(safety);
+        done();
+      });
   };
 
   const onDragStart: PointerEventHandler<HTMLDivElement> = (e) => {
     dragState.current = { startX: e.clientX, startY: e.clientY, startW: window.innerWidth, startH: window.innerHeight };
     lastSentSize.current = { w: window.innerWidth, h: window.innerHeight };
+    // ドラッグ開始時に CSS px → 論理 px の換算比率を native へ確定させる（順序保証のため完了 Promise を保持）。
+    beginReady.current = juceBridge.callNative('window_action', 'resizeBegin', window.innerWidth, window.innerHeight);
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onDrag: PointerEventHandler<HTMLDivElement> = (e) => {
     if (!dragState.current) return;
-    const dx = e.clientX - dragState.current.startX;
-    const dy = e.clientY - dragState.current.startY;
+    // ハンドル右下角をカーソル位置(ビューポート座標=CSS px)へ直接アンカーする。
+    //  startW+dx 方式だと掴んだ位置のズレ(grab gap)を恒久的に引きずる（カーソルとハンドルが
+    //  ズレたまま伸縮する）ため、カーソル直アンカーにして角がカーソルへ追従するようにする。
+    //  ハンドルは right:0/bottom:0 でビューポート右下に固定、左上端は (0,0) なので
+    //  clientX/clientY がそのまま左/上端からの目標サイズ(CSS px)になる。
     // 下限はプラグイン本体側 (kMinWidth/kMinHeight) と一致させる。整数化して重複判定を効かせる。
-    const w = Math.round(Math.max(640, dragState.current.startW + dx));
-    const h = Math.round(Math.max(380, dragState.current.startH + dy));
+    const w = Math.round(Math.max(640, e.clientX));
+    const h = Math.round(Math.max(380, e.clientY));
     pendingResize.current = { w, h };            // 常に最新の目標サイズを上書き保持
     pumpResize();                                // 往復中でなければ即送信、そうでなければ完了時に送る
   };

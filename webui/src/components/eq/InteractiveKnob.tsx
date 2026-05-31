@@ -74,11 +74,14 @@ export function InteractiveKnob({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const anchorRef = useRef<{ startY: number; startNorm: number; startValue: number; moved: boolean } | null>(null);
 
-  // 最新値を参照する ref（ホイール/ドラッグ中の stale closure 回避）
+  // 最新値を参照する ref（ホイール/ドラッグ中の stale closure 回避）。
+  //  ref 書き込みは render 中ではなく effect で行う（concurrent 安全）。
   const valueRef = useRef(value);
-  valueRef.current = value;
   const propsRef = useRef({ min, max, skew, onChange, disabled, fineStep });
-  propsRef.current = { min, max, skew, onChange, disabled, fineStep };
+  useEffect(() => {
+    valueRef.current = value;
+    propsRef.current = { min, max, skew, onChange, disabled, fineStep };
+  });
 
   // ホイールは passive: false が必要。onWheel (React) は passive なので native で貼る。
   useEffect(() => {

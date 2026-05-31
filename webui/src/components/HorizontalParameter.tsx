@@ -65,8 +65,12 @@ export const HorizontalParameter: React.FC<HorizontalParameterProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [inputText, setInputText] = useState('');
+  // wheel ハンドラから最新値を参照するための Latest Ref。
+  //  ref 書き込みは render 中ではなく effect で行う（concurrent 安全）。
   const valueRef = useRef(value);
-  valueRef.current = value;
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   // log スキュー時でも frontend-mirror は線形解釈で scaled 値を送る仕様のため、
   //  log 正規化値ではなく scaled 値 → 線形正規化 の経路で渡す必要がある。

@@ -4,6 +4,12 @@
 
 #include <cmath>
 
+// -Wsign-conversion を局所抑制：本ファイルは std::array を int の帯/段/ch インデックスで添字する DSP
+//  ループが多く、JUCE の int API（getWritePointer 等）と std::array(size_t) の境界で int↔size_t が
+//  必然的に混在する。個別キャストすると逆に getWritePointer(int) 側で別の変換警告が連鎖するため、JUCE
+//  本体と同様にファイル単位で抑制する（インデックスは常に小さい正値で安全）。
+JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wsign-conversion")
+
 namespace ze::dsp {
 
 namespace {
@@ -28,7 +34,11 @@ CoeffsPtr makeToneCoeffs(const Equalizer::BandSpec& spec, double sampleRate)
         case Type::LowShelf:  return Coeffs::makeLowShelf   (sr, f, q, gLin);
         case Type::HighShelf: return Coeffs::makeHighShelf  (sr, f, q, gLin);
         case Type::Notch:     return Coeffs::makeNotch      (sr, f, q);
-        default: break;
+        // HighPass / LowPass はトーン系ではなく makeHpLpBiquad/makeHpLpFirstOrder で処理する。
+        //  ここに来た場合は下のフォールバック（フラットな Peak）を返す。
+        case Type::HighPass:
+        case Type::LowPass:
+            break;
     }
     return Coeffs::makePeakFilter(sr, f, q, 1.0f);
 }
@@ -206,3 +216,5 @@ void Equalizer::processBlock(juce::AudioBuffer<float>& buffer) noexcept
 }
 
 } // namespace ze::dsp
+
+JUCE_END_IGNORE_WARNINGS_GCC_LIKE

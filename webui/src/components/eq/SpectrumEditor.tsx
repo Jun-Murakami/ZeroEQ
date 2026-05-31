@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Jun Murakami
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { BANDS, SLOPE_VALUES_DB, slopeDbToIdx, slopeIdxToDb, type SlopeDbPerOct } from './BandDefs';
 import { sampleCurveDb, sampleSingleBandDb, type BandCurveState } from './eqCurve';
-import { formatHz, formatGain, formatQ } from './InlineNumberInput';
+import { formatHz, formatGain, formatQ } from './numberFormat';
 import { juceBridge } from '../../bridge/juce';
 import type { SpectrumUpdateData } from '../../types';
 import { useJuceComboBoxIndex } from '../../hooks/useJuceParam';
@@ -104,7 +104,8 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const isFine = (e: PointerEvent | WheelEvent) => e.ctrlKey || e.metaKey || e.shiftKey;
 
 export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbMax = 6 }: Props) {
-  const eqDbToY = makeEqDbToY(eqDbMax);
+  // eqDbMax にのみ依存する座標変換。毎レンダー新関数だと描画 effect の依存が安定しないため memo 化。
+  const eqDbToY = useMemo(() => makeEqDbToY(eqDbMax), [eqDbMax]);
 
   // スペアナ bins は本コンポーネント内で juceBridge を購読する（親 App に state を持たせると
   // 30Hz の spectrumUpdate 毎に App ツリー全体が再レンダする）。
@@ -133,8 +134,11 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
   // mount-once の useEffect で setup されるポインタハンドラから最新 eqDbMax を参照するための ref。
   // ref を経由しないと、ハンドラは mount 時の eqDbMax を恒久的にキャプチャしてしまい、
   // スケール切替後のヒットテスト / ドラッグ値計算が視覚位置とズレる（＝ノードに当たらなくなる）。
+  //  ref 書き込みは render 中ではなく effect で行う（concurrent 安全）。
   const eqDbMaxRef = useRef(eqDbMax);
-  eqDbMaxRef.current = eqDbMax;
+  useEffect(() => {
+    eqDbMaxRef.current = eqDbMax;
+  }, [eqDbMax]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -142,9 +146,12 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
   //  キャンバス上の hover とは独立で、両方が立つこともある。描画では highlight 扱いに統一する。
   const knobHoveredIdx = useHoveredBandFromKnob();
 
-  // 最新値を保持する ref（mount-once useEffect 内のイベントハンドラから参照するため）
+  // 最新値を保持する ref（mount-once useEffect 内のイベントハンドラから参照するため）。
+  //  ref 書き込みは render 中ではなく effect で行う（concurrent 安全）。
   const bandsRef = useRef(bands);
-  bandsRef.current = bands;
+  useEffect(() => {
+    bandsRef.current = bands;
+  }, [bands]);
 
   // drag 開始時のアンカー（fine adjust と freq/gain の相対計算に使う）
   const anchorRef = useRef<{
@@ -155,9 +162,12 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
     startGain: number;
   } | null>(null);
 
-  // hovered state を ref でも保持（mount-once useEffect 内のイベントハンドラから最新値を読む）
+  // hovered state を ref でも保持（mount-once useEffect 内のイベントハンドラから最新値を読む）。
+  //  ref 書き込みは render 中ではなく effect で行う（concurrent 安全）。
   const hoveredRef = useRef<number | null>(null);
-  hoveredRef.current = hoveredIdx;
+  useEffect(() => {
+    hoveredRef.current = hoveredIdx;
+  }, [hoveredIdx]);
 
   // ---- 曲線サンプリング用の周波数軸（log 等分、再レンダで固定）----
   const freqAxis = useMemo(() => {
@@ -476,7 +486,7 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
 
       ctx.restore();
     }
-  }, [width, height, preBins, postBins, bands, curveStates, singleBandCurves, fullCurveDb, sampleRate, freqAxis, activeIdx, hoveredIdx, knobHoveredIdx, eqDbMax, showPre, showPost]);
+  }, [width, height, preBins, postBins, bands, curveStates, singleBandCurves, fullCurveDb, sampleRate, freqAxis, activeIdx, hoveredIdx, knobHoveredIdx, eqDbMax, showPre, showPost, eqDbToY]);
 
   // ---- ポインタ / ホイールのインタラクション ----
   useEffect(() => {
@@ -642,8 +652,6 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
       canvas.removeEventListener('dblclick', onDblClick);
     };
     // mount-once: イベントハンドラは ref を介して最新値を参照するため依存配列なしで OK。
-    // hoveredIdx のみ state のため以下のダミー参照で onWheel が最新値を拾う形にする。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ノード hover / drag 中のみ指差し (pointer) カーソルに切替。
@@ -655,14 +663,32 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
   //  これによりキャンバス外に自由にはみ出せて、端でのフリップ（視点ガタつき）が起こらない。
   //  符号に応じた上下配置のみで、再反転しない一貫した挙動。
   const tipIdx = activeIdx !== null ? activeIdx : hoveredIdx;
+
+  // ツールチップの画面座標は canvas の getBoundingClientRect が必要。
+  //  render 中の ref アクセスを避けるため layout effect で算出して state に保持する
+  //  （Portal + position:fixed のはみ出し挙動はそのまま維持）。
+  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    const s = tipIdx !== null ? bands[tipIdx] : undefined;
+    if (tipIdx === null || !canvas || !s) {
+      setTipPos(null);
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    setTipPos({
+      x: rect.left + hzToX(s.freqHz, width),
+      y: rect.top + eqDbToY(s.gainDb, height),
+    });
+  }, [tipIdx, bands, width, height, eqDbToY]);
+
   let tooltip: ReactNode = null;
-  if (tipIdx !== null && canvasRef.current) {
+  if (tipIdx !== null && tipPos) {
     const def = BANDS[tipIdx];
     const s = bands[tipIdx];
     if (s) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const screenX = rect.left + hzToX(s.freqHz, width);
-      const screenY = rect.top + eqDbToY(s.gainDb, height);
+      const screenX = tipPos.x;
+      const screenY = tipPos.y;
       const above = s.gainDb >= 0;
 
       const tooltipEl = (
@@ -710,7 +736,3 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
     </div>
   );
 }
-
-// 外部で座標変換が必要な場合用（将来、数値入力欄などで再利用）
-// 座標ヘルパ外部公開（eqDbToY / yToEqDb は eqDbMax に依存するので makeEqDbToY を使う）
-export const spectrumCoords = { hzToX, xToHz, specDbToY, SPEC_DB_MIN, HZ_MIN, HZ_MAX, makeEqDbToY, makeYToEqDb };

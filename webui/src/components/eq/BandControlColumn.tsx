@@ -6,12 +6,12 @@ import { InteractiveKnob } from './InteractiveKnob';
 import { FilterIcon } from './FilterIcon';
 import type { BandDef } from './BandDefs';
 import { SLOPE_VALUES_DB, slopeIdxToDb, slopeDbToIdx } from './BandDefs';
+import { InlineNumberInput } from './InlineNumberInput';
 import {
-  InlineNumberInput,
   formatHz, parseHz,
   formatGain, parseGain,
   formatQ, parseQ,
-} from './InlineNumberInput';
+} from './numberFormat';
 import { useBandState } from '../../hooks/useBandParam';
 import { setHoveredBandFromKnob } from '../../hooks/hoveredBandStore';
 

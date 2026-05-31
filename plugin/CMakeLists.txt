@@ -66,12 +66,10 @@ juce_add_plugin(ZeroEQ
 
 juce_generate_juce_header(ZeroEQ)
 
-# Linux ビルド時のみ CLAP ターゲットを生成（clap-juce-extensions 経由）
-if(UNIX AND NOT APPLE)
-    clap_juce_extensions_plugin(TARGET ZeroEQ
-        CLAP_ID "com.junmurakami.zeroeq"
-        CLAP_FEATURES audio-effect equalizer)
-endif()
+# CLAP ターゲット生成（clap-juce-extensions 経由・Windows / macOS / Linux 全て）
+clap_juce_extensions_plugin(TARGET ZeroEQ
+    CLAP_ID "com.junmurakami.zeroeq"
+    CLAP_FEATURES audio-effect equalizer)
 
 # ソースファイル
 target_sources(ZeroEQ PRIVATE
@@ -130,6 +128,14 @@ target_link_libraries(ZeroEQ
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# Linux: KeyEventForwarder の X11 キーイベント合成送出（XSendEvent 等）に libX11 を明示リンク。
+#  JUCE はプラグインターゲットへ X11 を直接リンクしないため、自前で追加する。
+if(UNIX AND NOT APPLE)
+    find_package(X11 REQUIRED)
+    target_link_libraries(ZeroEQ PRIVATE ${X11_LIBRARIES})
+    target_include_directories(ZeroEQ PRIVATE ${X11_INCLUDE_DIR})
+endif()
 
 # macOS: ヘッダパッド確保（署名/wraptool 対策）
 if(APPLE)
