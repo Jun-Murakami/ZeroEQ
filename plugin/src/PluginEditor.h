@@ -94,6 +94,23 @@ private:
     juce::uint32 lastHandleResizeMs = 0;
     static constexpr juce::uint32 kResizeQuietMs = 160;
 
+    // Host window movement/resize can temporarily stall the WebView event loop.  During that
+    // period avoid queuing realtime JS events; ZeroEQ's spectrum payload is large enough to
+    // make backlog recovery look like a hard UI freeze.
+    void updatePeerBoundsActivity(juce::uint32 nowMs);
+    bool shouldPauseRealtimeEvents(juce::uint32 nowMs) const;
+    bool haveLastPeerBounds { false };
+    juce::Rectangle<int> lastPeerBounds;
+    juce::uint32 lastPeerBoundsChangeMs { 0 };
+    static constexpr juce::uint32 kPeerBoundsQuietMs = 220;
+
+    // Native -> JS realtime event rate limits.  The timer stays at 60 Hz for native decay and DPI
+    // polling, but WebView traffic is capped so window motion cannot build an unbounded queue.
+    juce::uint32 lastMeterEmitMs { 0 };
+    juce::uint32 lastSpectrumEmitMs { 0 };
+    static constexpr juce::uint32 kMeterEmitIntervalMs = 16;
+    static constexpr juce::uint32 kSpectrumEmitIntervalMs = 16;
+
     // --- Linux 限定のウィンドウ制御（[[linux-dpi-resize-scaling]] と同方針）---
     //  Bitwig 等はホスト枠ドラッグをプラグインへ転送しないため、Linux では枠リサイズを無効化し
     //  （setResizable(false)）、自前ハンドルのみ許可する。高頻度リサイズで取り残された黒残り/
@@ -116,6 +133,9 @@ private:
     double webResizeRatioW { 1.0 };
     double webResizeRatioH { 1.0 };
     bool   initialLayoutApplied { false };
+    // APVTS state の保存サイズ（editorWidth/editorHeight）から復元したか。
+    //  復元した場合、apply_layout の初回 ×ratio リサイズで保存値（論理px）を上書きしない（二重適用防止）。
+    bool   restoredFromSavedSize { false };
     int    designTargetW { 875 };
     int    designTargetH { 450 };
 

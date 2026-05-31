@@ -668,7 +668,7 @@ function App() {
               bottom: 0,
               width: 24,
               height: 24,
-              // カーソル変更はしない（ドット表示が視覚的アフォーダンスを担う）。
+              cursor: 'nwse-resize',
               zIndex: 2147483647,
               backgroundColor: 'transparent',
             }}

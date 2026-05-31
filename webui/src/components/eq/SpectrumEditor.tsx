@@ -117,13 +117,35 @@ export function SpectrumEditor({ width, height, bands, sampleRate = 48000, eqDbM
   //  もう片方が `undefined` になり、1 フレームだけ塗り/線が消えてチラつく。
   const [preBins, setPreBins] = useState<number[] | undefined>(undefined);
   const [postBins, setPostBins] = useState<number[] | undefined>(undefined);
+  const pendingPreBinsRef = useRef<number[] | undefined>(undefined);
+  const pendingPostBinsRef = useRef<number[] | undefined>(undefined);
+  const spectrumRafRef = useRef<number | null>(null);
   useEffect(() => {
+    const flushSpectrum = () => {
+      spectrumRafRef.current = null;
+      const nextPre = pendingPreBinsRef.current;
+      const nextPost = pendingPostBinsRef.current;
+      pendingPreBinsRef.current = undefined;
+      pendingPostBinsRef.current = undefined;
+      if (nextPre) setPreBins(nextPre);
+      if (nextPost) setPostBins(nextPost);
+    };
+
     const id = juceBridge.addEventListener('spectrumUpdate', (d: unknown) => {
       const s = d as SpectrumUpdateData;
-      if (s.pre)  setPreBins(s.pre);
-      if (s.post) setPostBins(s.post);
+      if (s.pre) pendingPreBinsRef.current = s.pre;
+      if (s.post) pendingPostBinsRef.current = s.post;
+      if (spectrumRafRef.current === null)
+        spectrumRafRef.current = requestAnimationFrame(flushSpectrum);
     });
-    return () => juceBridge.removeEventListener(id);
+    return () => {
+      juceBridge.removeEventListener(id);
+      if (spectrumRafRef.current !== null)
+        cancelAnimationFrame(spectrumRafRef.current);
+      spectrumRafRef.current = null;
+      pendingPreBinsRef.current = undefined;
+      pendingPostBinsRef.current = undefined;
+    };
   }, []);
 
   // ANALYZER_MODE: 0=Off / 1=Pre / 2=Post / 3=Pre+Post。0 の時はスペクトラムの塗り/線を描かない。

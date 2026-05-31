@@ -299,8 +299,10 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
                                   if (!initialLayoutApplied)
                                   {
                                       initialLayoutApplied = true;
-                                      setSize(juce::roundToInt(designTargetW * webResizeRatioW),
-                                              juce::roundToInt(designTargetH * webResizeRatioH));
+                                      // 保存サイズから復元した場合は論理 px で既に正しいので上書きしない（二重 ratio 防止）。
+                                      if (!restoredFromSavedSize)
+                                          setSize(juce::roundToInt(designTargetW * webResizeRatioW),
+                                                  juce::roundToInt(designTargetH * webResizeRatioH));
                                   }
                                 #endif
                                   completion(juce::var{ true });
@@ -350,10 +352,22 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
    #endif
 
     addAndMakeVisible(webView);
-    setSize(875, 450);
-    // 設計サイズ（CSS px 相当）を控える。apply_layout 初回に × ratio して論理 px へ直す。
-    designTargetW = getWidth();
-    designTargetH = getHeight();
+
+    // 編集サイズの永続化。ホストのウィンドウサイズ記憶はフォーマット/ホスト依存で不安定
+    //  （VST3 on Bitwig、Cubase Mac、Pro Tools、Logic、Linux 等で復元されない/丸められる）。
+    //  そこで TinyVU と同様に APVTS state へ editorWidth/editorHeight を自前保存し、
+    //  ここで強制復元してホスト・フォーマット非依存にする。保存値は論理 px。
+    const auto apvtsState = audioProcessor.getState().state;
+    restoredFromSavedSize = apvtsState.hasProperty("editorWidth") && apvtsState.hasProperty("editorHeight");
+    const int savedW = static_cast<int>(apvtsState.getProperty("editorWidth",  875));
+    const int savedH = static_cast<int>(apvtsState.getProperty("editorHeight", 450));
+    const int restoreW = juce::jlimit(kMinWidth,  kMaxWidth,  savedW);
+    const int restoreH = juce::jlimit(kMinHeight, kMaxHeight, savedH);
+
+    // 設計サイズ（CSS px 相当）。apply_layout 初回に × ratio して論理 px へ直す（保存復元時は上書きしない）。
+    designTargetW = 875;
+    designTargetH = 450;
+    setSize(restoreW, restoreH);
 
     resizerConstraints.setSizeLimits(kMinWidth, kMinHeight, kMaxWidth, kMaxHeight);
 #if JUCE_LINUX || JUCE_BSD
@@ -380,14 +394,14 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
     else
         webView.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
 
-    // 一部ホスト（Pro Tools AAX など）はコンストラクタ中の setSize を無視するため、
-    // 次のメッセージループで最小値を割っていたら初期サイズを強制する。
+    // 一部ホスト（Pro Tools AAX, Cubase など）はコンストラクタ中の setSize を無視したり、
+    //  独自保存サイズで最初の resized() を呼ぶため、次のメッセージループで復元サイズへ強制復帰させる。
     juce::Component::SafePointer<ZeroEQAudioProcessorEditor> safeSelf { this };
-    juce::MessageManager::callAsync([safeSelf]()
+    juce::MessageManager::callAsync([safeSelf, restoreW, restoreH]()
     {
         if (safeSelf == nullptr) return;
-        if (safeSelf->getWidth() < kMinWidth || safeSelf->getHeight() < kMinHeight)
-            safeSelf->setSize(875, 450);
+        if (safeSelf->getWidth() != restoreW || safeSelf->getHeight() != restoreH)
+            safeSelf->setSize(restoreW, restoreH);
     });
 
     // 60Hz。メーター / スペクトラム / DPI ポーリングの駆動源。
@@ -432,6 +446,12 @@ void ZeroEQAudioProcessorEditor::resized()
         resizer->setBounds(getWidth() - gripperSize, getHeight() - gripperSize, gripperSize, gripperSize);
         resizer->toFront(true);
     }
+
+    // 編集サイズを APVTS state に保存し、次回オープン時にホスト保存値ではなくこの値で復元する。
+    //  property 名は parameter ID と衝突しないため APVTS listener には影響しない。論理 px で保存。
+    auto state = audioProcessor.getState().state;
+    state.setProperty("editorWidth",  getWidth(),  nullptr);
+    state.setProperty("editorHeight", getHeight(), nullptr);
 
 #if JUCE_LINUX || JUCE_BSD
     // ホスト主導の resized()（= guiSetSize/onSize の echo）が着地したら保留 resizeTo を確定。
@@ -481,6 +501,25 @@ void ZeroEQAudioProcessorEditor::applyWindowResize(
     setSize(targetW, targetH);
     completion(juce::var{ true });
 #endif
+}
+
+void ZeroEQAudioProcessorEditor::updatePeerBoundsActivity(juce::uint32 nowMs)
+{
+    if (auto* peer = getPeer())
+    {
+        const auto bounds = peer->getBounds();
+        if (haveLastPeerBounds && bounds != lastPeerBounds)
+            lastPeerBoundsChangeMs = nowMs;
+
+        lastPeerBounds = bounds;
+        haveLastPeerBounds = true;
+    }
+}
+
+bool ZeroEQAudioProcessorEditor::shouldPauseRealtimeEvents(juce::uint32 nowMs) const
+{
+    return (nowMs - lastHandleResizeMs < kResizeQuietMs)
+        || (nowMs - lastPeerBoundsChangeMs < kPeerBoundsQuietMs);
 }
 
 std::optional<ZeroEQAudioProcessorEditor::Resource>
@@ -564,25 +603,27 @@ void ZeroEQAudioProcessorEditor::pollAndMaybeNotifyDpiChange()
 
 void ZeroEQAudioProcessorEditor::timerCallback()
 {
+    const auto nowMs = juce::Time::getMillisecondCounter();
+
 #if JUCE_LINUX || JUCE_BSD
     // リサイズ ack の安全タイムアウト: ホストが echo を返さない場合でも保留 completion を必ず
     //  解決し、JS のバックプレッシャがフリーズしないようにする（~45ms = 最低 ~22fps を保証）。
     //  ※ 下の resize-quiet 早期 return より前に置く。resize 中も ack を解決する必要があるため。
     if (resizeAckPending
-        && (juce::Time::getMillisecondCounter() - resizeAckStartMs) > 45)
+        && (nowMs - resizeAckStartMs) > 45)
         resolveResizeAck();
 #endif
 
     if (isShuttingDown.load(std::memory_order_acquire)) return;
     if (! webViewLifetimeGuard.isConstructed()) return;
 
-    // ハンドルリサイズ中（直近に resizeTo を受けた）は、meter/spectrum の
+    updatePeerBoundsActivity(nowMs);
+
+    // ハンドルリサイズ中または host window の移動/サイズ変化直後は、meter/spectrum の
     // ネイティブ→JS 送出を一時停止する。これらは毎フレーム JSON シリアライズ +
     // evaluateJavascript でメッセージスレッドと WebView の JS スレッド双方を占有するため、
-    // 送り続けると JS→ネイティブの resize メッセージがキューで待たされ、ウィンドウ追従が
-    // カクつく（OS のウィンドウ枠リサイズはこのキューを介さないので元々滑らか）。
-    // 静止して kResizeQuietMs 経過すれば自動的に再開する。
-    if (juce::Time::getMillisecondCounter() - lastHandleResizeMs < kResizeQuietMs)
+    // 送り続けると WebView 側にイベントが溜まり、操作や描画が固まって見える。
+    if (shouldPauseRealtimeEvents(nowMs))
         return;
 
 #if JUCE_LINUX || JUCE_BSD
@@ -599,7 +640,7 @@ void ZeroEQAudioProcessorEditor::timerCallback()
     else if (!settleReconcileDone
         && !resizeAckPending
         && isVisible()
-        && (juce::Time::getMillisecondCounter() - lastResizeActivityMs) > 120)
+        && (nowMs - lastResizeActivityMs) > 120)
     {
         settleReconcileDone = true;
         resyncTargetW = getWidth();
@@ -641,30 +682,46 @@ void ZeroEQAudioProcessorEditor::timerCallback()
     const float outRmsL = readAndDecayMax(audioProcessor.outRmsAccumL, kRmsDecay);
     const float outRmsR = readAndDecayMax(audioProcessor.outRmsAccumR, kRmsDecay);
 
-    juce::DynamicObject::Ptr meter { new juce::DynamicObject{} };
-    juce::DynamicObject::Ptr input { new juce::DynamicObject{} };
-    juce::DynamicObject::Ptr output{ new juce::DynamicObject{} };
+    if (nowMs - lastMeterEmitMs >= kMeterEmitIntervalMs)
+    {
+        lastMeterEmitMs = nowMs;
 
-    input ->setProperty("peakLeft",  juce::Decibels::gainToDecibels(inPeakL,  -60.0f));
-    input ->setProperty("peakRight", juce::Decibels::gainToDecibels(inPeakR,  -60.0f));
-    input ->setProperty("rmsLeft",   juce::Decibels::gainToDecibels(inRmsL,   -60.0f));
-    input ->setProperty("rmsRight",  juce::Decibels::gainToDecibels(inRmsR,   -60.0f));
-    input ->setProperty("momentary", static_cast<double>(audioProcessor.inputMomentary.getMomentaryLKFS()));
+        juce::DynamicObject::Ptr meter { new juce::DynamicObject{} };
+        juce::DynamicObject::Ptr input { new juce::DynamicObject{} };
+        juce::DynamicObject::Ptr output{ new juce::DynamicObject{} };
 
-    output->setProperty("peakLeft",  juce::Decibels::gainToDecibels(outPeakL, -60.0f));
-    output->setProperty("peakRight", juce::Decibels::gainToDecibels(outPeakR, -60.0f));
-    output->setProperty("rmsLeft",   juce::Decibels::gainToDecibels(outRmsL,  -60.0f));
-    output->setProperty("rmsRight",  juce::Decibels::gainToDecibels(outRmsR,  -60.0f));
-    output->setProperty("momentary", static_cast<double>(audioProcessor.outputMomentary.getMomentaryLKFS()));
+        input ->setProperty("peakLeft",  juce::Decibels::gainToDecibels(inPeakL,  -60.0f));
+        input ->setProperty("peakRight", juce::Decibels::gainToDecibels(inPeakR,  -60.0f));
+        input ->setProperty("rmsLeft",   juce::Decibels::gainToDecibels(inRmsL,   -60.0f));
+        input ->setProperty("rmsRight",  juce::Decibels::gainToDecibels(inRmsR,   -60.0f));
+        input ->setProperty("momentary", static_cast<double>(audioProcessor.inputMomentary.getMomentaryLKFS()));
 
-    meter->setProperty("input",  input.get());
-    meter->setProperty("output", output.get());
+        output->setProperty("peakLeft",  juce::Decibels::gainToDecibels(outPeakL, -60.0f));
+        output->setProperty("peakRight", juce::Decibels::gainToDecibels(outPeakR, -60.0f));
+        output->setProperty("rmsLeft",   juce::Decibels::gainToDecibels(outRmsL,  -60.0f));
+        output->setProperty("rmsRight",  juce::Decibels::gainToDecibels(outRmsR,  -60.0f));
+        output->setProperty("momentary", static_cast<double>(audioProcessor.outputMomentary.getMomentaryLKFS()));
 
-    webView.emitEventIfBrowserIsVisible("meterUpdate", meter.get());
+        meter->setProperty("input",  input.get());
+        meter->setProperty("output", output.get());
+
+        webView.emitEventIfBrowserIsVisible("meterUpdate", meter.get());
+    }
 
     // ---- Spectrum（Pre / Post）----
     //  Analyzer::drainAndCompute が新フレームを生成した時だけ emit する。
     //  UI 側は受信した配列を log-freq ビン（kNumDisplayBins 個）として描画すれば良い。
+    if (nowMs - lastSpectrumEmitMs < kSpectrumEmitIntervalMs)
+        return;
+
+    if (auto* param = audioProcessor.getState().getParameter(ze::id::ANALYZER_MODE.getParamID()))
+    {
+        if (param->getValue() <= 0.0f)
+            return;
+    }
+
+    lastSpectrumEmitMs = nowMs;
+
     const bool havePre  = audioProcessor.preAnalyzer .drainAndCompute(preSpectrumScratch .data());
     const bool havePost = audioProcessor.postAnalyzer.drainAndCompute(postSpectrumScratch.data());
 

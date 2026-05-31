@@ -23,14 +23,35 @@ const MIN_DB = -30;
 export function OutputMeterWidget({ height }: Props) {
   const [outPeakL, setOutPeakL] = useState(-60);
   const [outPeakR, setOutPeakR] = useState(-60);
+  const pendingPeaksRef = useRef<{ left: number; right: number } | null>(null);
+  const meterRafRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const flushMeter = () => {
+      meterRafRef.current = null;
+      const next = pendingPeaksRef.current;
+      pendingPeaksRef.current = null;
+      if (!next) return;
+      setOutPeakL(next.left);
+      setOutPeakR(next.right);
+    };
+
     const id = juceBridge.addEventListener('meterUpdate', (d: unknown) => {
       const m = d as MeterUpdateData;
-      setOutPeakL(m.output?.peakLeft ?? -60);
-      setOutPeakR(m.output?.peakRight ?? -60);
+      pendingPeaksRef.current = {
+        left: m.output?.peakLeft ?? -60,
+        right: m.output?.peakRight ?? -60,
+      };
+      if (meterRafRef.current === null)
+        meterRafRef.current = requestAnimationFrame(flushMeter);
     });
-    return () => juceBridge.removeEventListener(id);
+    return () => {
+      juceBridge.removeEventListener(id);
+      if (meterRafRef.current !== null)
+        cancelAnimationFrame(meterRafRef.current);
+      meterRafRef.current = null;
+      pendingPeaksRef.current = null;
+    };
   }, []);
 
   const scaleRef = useRef<HTMLCanvasElement | null>(null);
