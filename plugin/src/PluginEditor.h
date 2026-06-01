@@ -11,6 +11,13 @@
 #include <optional>
 #include <vector>
 
+namespace ze {
+// Linux WebView スケール補正（global-scale）のディスクキャッシュ。createEditor で早期適用し、
+//  apply_layout で実測した値を書き戻す。未測定環境では何もしない（既存挙動を変えない）。
+void applyCachedWebViewScaleCorrection();
+void cacheWebViewScaleCorrection(double globalScale);
+}
+
 class ZeroEQAudioProcessorEditor : public juce::AudioProcessorEditor,
                                    private juce::Timer
 {

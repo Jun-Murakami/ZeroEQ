@@ -277,6 +277,10 @@ bool ZeroEQAudioProcessor::hasEditor() const { return true; }
 
 juce::AudioProcessorEditor* ZeroEQAudioProcessor::createEditor()
 {
+    // スケール補正（Linux）: 前回 apply_layout で実測・キャッシュした global-scale を、ホストが窓を
+    //  サイズ決定する前のここで早期適用する。未測定環境ではキャッシュが無く何もしない（＝ロールバック等価）。
+    //  ハードコード・環境分岐は無し（値は各環境の実測のみ）。
+    ze::applyCachedWebViewScaleCorrection();
     return new ZeroEQAudioProcessorEditor(*this);
 }
 
