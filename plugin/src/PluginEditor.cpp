@@ -346,14 +346,14 @@ ZeroEQAudioProcessorEditor::ZeroEQAudioProcessorEditor(ZeroEQAudioProcessor& p)
     //  ここで強制復元してホスト・フォーマット非依存にする。保存単位は Linux=CSS px / Win・mac=論理 px。
     const auto apvtsState = audioProcessor.getState().state;
     restoredFromSavedSize = apvtsState.hasProperty("editorWidth") && apvtsState.hasProperty("editorHeight");
-    const int savedW = static_cast<int>(apvtsState.getProperty("editorWidth",  875));
-    const int savedH = static_cast<int>(apvtsState.getProperty("editorHeight", 450));
+    const int savedW = static_cast<int>(apvtsState.getProperty("editorWidth",  760));
+    const int savedH = static_cast<int>(apvtsState.getProperty("editorHeight", 540));
     const int restoreW = juce::jlimit(kMinWidth,  kMaxWidth,  savedW);
     const int restoreH = juce::jlimit(kMinHeight, kMaxHeight, savedH);
 
     // 設計サイズ（CSS px == Linux 固定後の論理px）。保存値 editorWidth/Height も CSS px で一貫。
-    designTargetW = 875;
-    designTargetH = 450;
+    designTargetW = 760;
+    designTargetH = 540;
     setSize(restoreW, restoreH);
 
     resizerConstraints.setSizeLimits(kMinWidth, kMinHeight, kMaxWidth, kMaxHeight);

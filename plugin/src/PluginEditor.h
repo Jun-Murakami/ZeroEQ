@@ -138,8 +138,8 @@ private:
     // APVTS state の保存サイズ（editorWidth/editorHeight）から復元したか。
     //  復元した場合、apply_layout の初回 ×ratio リサイズで保存値（論理px）を上書きしない（二重適用防止）。
     bool   restoredFromSavedSize { false };
-    int    designTargetW { 875 };
-    int    designTargetH { 450 };
+    int    designTargetW { 760 };
+    int    designTargetH { 540 };
 
     // アナライザ描画用 scratch（UI スレッドのみ使用）
     std::array<float, ze::dsp::Analyzer::kNumDisplayBins> preSpectrumScratch{};

@@ -94,8 +94,8 @@ export function InlineNumberInput({
       style={{
         width: '100%',
         minWidth: 0,
-        fontSize: 13,
-        fontFamily: 'inherit',
+        fontSize: 11,
+        fontFamily: '"Red Hat Mono", monospace',
         textAlign: 'center',
         background: 'transparent',
         border: 'none',
