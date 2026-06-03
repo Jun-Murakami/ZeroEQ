@@ -644,7 +644,7 @@
     "path": "D:\\Synching\\code\\JUCE\\ZeroEQ\\webui\\node_modules\\cosmiconfig\\node_modules\\yaml",
     "licenseFile": "D:\\Synching\\code\\JUCE\\ZeroEQ\\webui\\node_modules\\cosmiconfig\\node_modules\\yaml\\LICENSE"
   },
-  "zeroeq-webui@1.0.4": {
+  "zeroeq-webui@1.0.5": {
     "licenses": "UNLICENSED",
     "private": true,
     "path": "D:\\Synching\\code\\JUCE\\ZeroEQ\\webui"
