@@ -47,7 +47,7 @@ juce_add_plugin(ZeroEQ
     PLUGIN_MANUFACTURER_CODE Jmbc
     PLUGIN_CODE ZrEq
     FORMATS ${ZEROEQ_FORMATS}
-    LV2URI "https://junmurakami.com/plugins/zeroeq"
+    LV2URI "https://junmurakami.com/apps/zeroeq"
     PLUGIN_AU_MAIN_TYPE "aufx"
     VST3_CATEGORIES "Fx" "EQ"
     AAX_CATEGORY "AAX_ePlugInCategory_EQ"
