@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Jun Murakami
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Version.h"
+#include "util/DiagnosticLog.h"
 
 #include <cmath>
 #include <algorithm>
@@ -63,6 +65,8 @@ ZeroEQAudioProcessor::ZeroEQAudioProcessor()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, juce::Identifier("ZeroEQ"), createParameterLayout())
 {
+    // WebView 起動診断ログ + Linux 描画/起動緩和策（エディタ生成より前に実行）
+    wvdiag::DiagnosticLog::install(ZEROEQ_PRODUCT_NAME, ZEROEQ_VERSION_STRING);
 }
 
 ZeroEQAudioProcessor::~ZeroEQAudioProcessor() = default;
