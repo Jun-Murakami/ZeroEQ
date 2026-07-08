@@ -1,5 +1,5 @@
 {
-  "@babel/code-frame@7.29.0": {
+  "@babel/code-frame@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -7,7 +7,7 @@
     "path": "/work/webui/node_modules/@babel/code-frame",
     "licenseFile": "/work/webui/node_modules/@babel/code-frame/LICENSE"
   },
-  "@babel/generator@7.29.1": {
+  "@babel/generator@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -15,7 +15,7 @@
     "path": "/work/webui/node_modules/@babel/generator",
     "licenseFile": "/work/webui/node_modules/@babel/generator/LICENSE"
   },
-  "@babel/helper-globals@7.28.0": {
+  "@babel/helper-globals@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -23,7 +23,7 @@
     "path": "/work/webui/node_modules/@babel/helper-globals",
     "licenseFile": "/work/webui/node_modules/@babel/helper-globals/LICENSE"
   },
-  "@babel/helper-module-imports@7.28.6": {
+  "@babel/helper-module-imports@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -31,7 +31,7 @@
     "path": "/work/webui/node_modules/@babel/helper-module-imports",
     "licenseFile": "/work/webui/node_modules/@babel/helper-module-imports/LICENSE"
   },
-  "@babel/helper-string-parser@7.27.1": {
+  "@babel/helper-string-parser@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -39,7 +39,7 @@
     "path": "/work/webui/node_modules/@babel/helper-string-parser",
     "licenseFile": "/work/webui/node_modules/@babel/helper-string-parser/LICENSE"
   },
-  "@babel/helper-validator-identifier@7.28.5": {
+  "@babel/helper-validator-identifier@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -47,7 +47,7 @@
     "path": "/work/webui/node_modules/@babel/helper-validator-identifier",
     "licenseFile": "/work/webui/node_modules/@babel/helper-validator-identifier/LICENSE"
   },
-  "@babel/parser@7.29.2": {
+  "@babel/parser@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -63,7 +63,7 @@
     "path": "/work/webui/node_modules/@babel/runtime",
     "licenseFile": "/work/webui/node_modules/@babel/runtime/LICENSE"
   },
-  "@babel/template@7.28.6": {
+  "@babel/template@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -71,7 +71,7 @@
     "path": "/work/webui/node_modules/@babel/template",
     "licenseFile": "/work/webui/node_modules/@babel/template/LICENSE"
   },
-  "@babel/traverse@7.29.0": {
+  "@babel/traverse@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -79,7 +79,7 @@
     "path": "/work/webui/node_modules/@babel/traverse",
     "licenseFile": "/work/webui/node_modules/@babel/traverse/LICENSE"
   },
-  "@babel/types@7.29.0": {
+  "@babel/types@7.29.7": {
     "licenses": "MIT",
     "repository": "https://github.com/babel/babel",
     "publisher": "The Babel Team",
@@ -213,56 +213,56 @@
     "path": "/work/webui/node_modules/@jridgewell/trace-mapping",
     "licenseFile": "/work/webui/node_modules/@jridgewell/trace-mapping/LICENSE"
   },
-  "@mui/core-downloads-tracker@9.0.0": {
+  "@mui/core-downloads-tracker@9.2.0": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
     "path": "/work/webui/node_modules/@mui/core-downloads-tracker",
     "licenseFile": "/work/webui/node_modules/@mui/core-downloads-tracker/LICENSE"
   },
-  "@mui/icons-material@9.0.0": {
+  "@mui/icons-material@9.2.0": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
     "path": "/work/webui/node_modules/@mui/icons-material",
     "licenseFile": "/work/webui/node_modules/@mui/icons-material/LICENSE"
   },
-  "@mui/material@9.0.0": {
+  "@mui/material@9.2.0": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
     "path": "/work/webui/node_modules/@mui/material",
     "licenseFile": "/work/webui/node_modules/@mui/material/LICENSE"
   },
-  "@mui/private-theming@9.0.0": {
+  "@mui/private-theming@9.2.0": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
     "path": "/work/webui/node_modules/@mui/private-theming",
     "licenseFile": "/work/webui/node_modules/@mui/private-theming/LICENSE"
   },
-  "@mui/styled-engine@9.0.0": {
+  "@mui/styled-engine@9.1.1": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
     "path": "/work/webui/node_modules/@mui/styled-engine",
     "licenseFile": "/work/webui/node_modules/@mui/styled-engine/LICENSE"
   },
-  "@mui/system@9.0.0": {
+  "@mui/system@9.2.0": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
     "path": "/work/webui/node_modules/@mui/system",
     "licenseFile": "/work/webui/node_modules/@mui/system/LICENSE"
   },
-  "@mui/types@9.0.0": {
+  "@mui/types@9.1.1": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
     "path": "/work/webui/node_modules/@mui/types",
     "licenseFile": "/work/webui/node_modules/@mui/types/LICENSE"
   },
-  "@mui/utils@9.0.0": {
+  "@mui/utils@9.2.0": {
     "licenses": "MIT",
     "repository": "https://github.com/mui/material-ui",
     "publisher": "MUI Team",
@@ -295,7 +295,7 @@
     "path": "/work/webui/node_modules/@types/react-transition-group",
     "licenseFile": "/work/webui/node_modules/@types/react-transition-group/LICENSE"
   },
-  "@types/react@19.2.14": {
+  "@types/react@19.2.17": {
     "licenses": "MIT",
     "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
     "path": "/work/webui/node_modules/@types/react",
@@ -558,7 +558,7 @@
     "path": "/work/webui/node_modules/prop-types",
     "licenseFile": "/work/webui/node_modules/prop-types/LICENSE"
   },
-  "react-dom@19.2.5": {
+  "react-dom@19.2.7": {
     "licenses": "MIT",
     "repository": "https://github.com/facebook/react",
     "path": "/work/webui/node_modules/react-dom",
@@ -570,7 +570,7 @@
     "path": "/work/webui/node_modules/hoist-non-react-statics/node_modules/react-is",
     "licenseFile": "/work/webui/node_modules/hoist-non-react-statics/node_modules/react-is/LICENSE"
   },
-  "react-is@19.2.5": {
+  "react-is@19.2.7": {
     "licenses": "MIT",
     "repository": "https://github.com/facebook/react",
     "path": "/work/webui/node_modules/react-is",
@@ -582,7 +582,7 @@
     "path": "/work/webui/node_modules/react-transition-group",
     "licenseFile": "/work/webui/node_modules/react-transition-group/LICENSE"
   },
-  "react@19.2.5": {
+  "react@19.2.7": {
     "licenses": "MIT",
     "repository": "https://github.com/facebook/react",
     "path": "/work/webui/node_modules/react",
@@ -644,12 +644,12 @@
     "path": "/work/webui/node_modules/cosmiconfig/node_modules/yaml",
     "licenseFile": "/work/webui/node_modules/cosmiconfig/node_modules/yaml/LICENSE"
   },
-  "zeroeq-webui@1.0.5": {
+  "zeroeq-webui@1.0.7": {
     "licenses": "UNLICENSED",
     "private": true,
     "path": "/work/webui"
   },
-  "zustand@5.0.12": {
+  "zustand@5.0.14": {
     "licenses": "MIT",
     "repository": "https://github.com/pmndrs/zustand",
     "publisher": "Paul Henschel",
